@@ -56,3 +56,30 @@ human gameplay. Full match ready-up, bomb planting/desarming, all 21 waypoint
 maps, smoke/grenade interactions, long-duration operation and EC2/Bard resource
 headroom are not certified. Those are follow-up gameplay/qualification work,
 not authorization to deploy or begin unrelated administration commands.
+
+## Final compatibility follow-up
+
+Engine revision `3b7ff13c091d22a9ec8eae49b8fa96af44b73b2a` built successfully
+as custom build 1234, with the same separate integrity overlay. Its SHA-256 is
+`b4cc80169bdaf9e7c5c6a90b942c86b268ad7b00b2ff63c0ca863283c81236ba`. The extra protocol-21-only restriction was removed from bot-slot
+reclamation: legacy protocols already accepted by upstream validation can now
+reserve a slot for their existing update path too. A 30.21-second regression
+confirmed that a protocol-7 request reclaimed a bot slot and reached the
+updater's protected CS_ZOMBIE state without a full-server rejection. With no
+network, the upstream update backend cannot resolve; the fixture correctly
+reports pending update rather than successful authentication. Eleven bots plus
+that reserved updater slot is expected, not a leaked free slot.
+
+Script revision `4c72816` restores all-player model-readiness and smoke metadata
+registration. The perception core requires this metadata for human opponents
+as well as bots. No Promod callbacks or automatic admin permissions were added.
+The final 45.13-second gameplay regression passed with these scripts and the
+legacy-compatible executable: 12 classes, both teams, navigation, targets,
+168 shots and 9 kills, with zero GSC/fatal errors and pure enabled.
+AI source SHA-256: `85d365e5fff7fb43974beb5c5bfe71c7c38e31887033c4e24aea2453c2f66361`.
+
+Real graphical-client combat and smoke behavior still require manual validation;
+the metadata fix is not presented as a completed human-client test. The initial
+legacy fixture assumed immediate backend rejection and was rejected as evidence;
+its corrected pending-update expectation follows existing upstream behavior.
+All earlier evidence remains preserved. No production service was changed.
