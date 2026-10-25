@@ -19,12 +19,19 @@ def main():
     p.add_argument('--runtime', type=Path, required=True)
     p.add_argument('--game', type=Path, required=True)
     p.add_argument('--image', default=IMAGE)
+    p.add_argument('--image-binary', action='store_true', help='Test the immutable packaged executable instead of the mounted binary')
     p.add_argument('--scenario', choices=['gameplay', 'policy', 'rotation', 'burst', 'legacy', 'admin'], default='gameplay')
     p.add_argument('--seconds', type=int, default=90)
     a = p.parse_args()
     runtime = a.runtime.resolve()
     if not (runtime / '.bot-test-runtime').is_file():
         p.error('runtime must be created by prepare.py')
+    binary = '/home/user/cod4/cod4x18_dedrun' if a.image_binary else '/runtime/cod4x18_dedrun'
+    if a.image_binary:
+        actual = subprocess.check_output(['docker', 'run', '--rm', '--pull', 'never', '--network', 'none',
+                    '--read-only', '--entrypoint', 'sha256sum', a.image, binary], text=True).split()[0]
+        if actual != json.loads((runtime / 'inputs.json').read_text())['binary_sha256']:
+            p.error('Packaged executable does not match the prepared runtime binary hash')
     if a.scenario == 'policy' and a.seconds < 75:
         p.error('policy scenario requires at least 75 seconds')
     if a.scenario == 'rotation' and a.seconds < 135:
@@ -43,7 +50,7 @@ def main():
     cmd = ['docker', 'run', '--pull', 'never', '--rm', '-i', '--name', name, '--network', 'none',
            '--user', f'{os.getuid()}:{os.getgid()}', '--read-only',
            '--tmpfs', '/tmp:rw,nosuid,size=128m', '--workdir', '/runtime',
-           '--entrypoint', '/runtime/cod4x18_dedrun',
+           '--entrypoint', binary,
            '--mount', f'type=bind,src={runtime},dst=/runtime',
            '--mount', f'type=bind,src={a.game / "main"},dst=/runtime/main,readonly',
            '--mount', f'type=bind,src={a.game / "zone"},dst=/runtime/zone,readonly', a.image,

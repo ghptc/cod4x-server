@@ -74,6 +74,8 @@ python3 -m unittest discover -s tests -p test_admin_rules.py
 # After preparing a private runtime with --admin-rules and building the fixture:
 gcc -std=c11 -Wall -Wextra -Werror tests/rcon_reject.c -o /private/runtime/rcon_reject
 python3 tools/bots/run_local.py --runtime /private/runtime --game /private/game --scenario admin --seconds 65
+# Qualify the actual immutable image executable after building it:
+python3 tools/bots/run_local.py --runtime /private/runtime --game /private/game --image cod4x-server:VERIFIED-REVISION --image-binary --scenario admin --seconds 65
 ```
 
 Build the Linux i386 executable locally with the existing verified toolchain.
@@ -128,3 +130,26 @@ its data. The upstream updater may wait about four minutes for its lock under a
 read-only root; the image executable remains pinned. Missing steam_api.so is an
 existing image warning, not silently repaired here. Graphical FPS/PB, human
 team/class, voice/chat and authenticated low-power in-game checks remain pending.
+
+## Recorded local qualification — 2026-10-25
+
+Clean ELF32/i386 build 1244 at native revision
+`bd132029d5e8d661dea72dbbfcd5e50b884206a9`; executable SHA-256
+`e7bf2df764269dc627ddeeea5334ea0c36cf8ca5c57382a6ef63eca2b5b92a1d`.
+Two ruleset tests, six integrity tests and existing bot-policy assertions passed.
+The 65-second admin scenario passed against both the prepared executable and
+the actual packaged executable, with no GSC/fatal errors or crashes in accepted
+runs. It verified unauthenticated mute denial, strict arguments, voice/all mute
+and unmute, all three team requests, valid assault classes after bot moves,
+deferred rule application visible in ui_timelimit, default restoration, handles
+after a map change, empty targets and kicked-slot reuse. sv_pure=1/eight headers
+remained intact. Early direct-call crash evidence is retained as rejected
+evidence, not presented as a successful test.
+
+Local validation image: `cod4x-server:admin-bd13202`, image ID
+`sha256:d7f12a859b8de231516e8ec811913a4ad4bd6a2e1f68b985c76a03aa1f46f79e`.
+Its executable hash/revision, non-root user, notices and absence of GCC/G++,
+NASM and make were checked. It is an independently qualified administration
+branch image, **not a combined release**. After owner merges and resolves the
+shared preparation/test-script changes, rebuild and qualify the merged source
+before any separately approved deployment. No image was published or deployed.
