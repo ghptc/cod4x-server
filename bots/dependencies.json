@@ -1,0 +1,54 @@
+{
+  "bot_warfare": {
+    "repository": "https://github.com/ineedbots/iw3_bot_warfare",
+    "tag": "v2.2.0",
+    "commit": "7b52b462e40fa68287b9e54602e52da83b17766c",
+    "note": "_bot.gsc internal bw_version is 2.1.0 despite v2.2.0 tag",
+    "archive_sha256": "7df047fb19657d70fd986cb9de0657d5b19ed57150a84590610fd5bcafa967c1"
+  },
+  "promod": {
+    "identification": "Promod LIVE V2.20 EU, embedded strings",
+    "files": {
+      "mod.ff": "930c9123b679394c18683f890d8e792d3b31cafacadda2c3293e5e066e9fb1c2",
+      "pml220.iwd": "b78645edbad9e33a4ca324851a470e903ddec04b23f24d0e1db7a8b9ec2a7b60",
+      "z_c_r.iwd": "b4e9faa16b55756132baec95ddbe21856c13a7173fac485244ff216786138cbd"
+    }
+  },
+  "integrity_headers": {
+    "jcod4x_00.dat": "973080afa5e492de51e745d9b137ef918218a59b53e66ab193bef6a78f4a2c63",
+    "localized_english_iw00.dat": "7be6f2bf8e8d38c475949933b9d89e49e07a08580bd81327e502816b14e59390",
+    "localized_english_iw01.dat": "6499a0a650d8c017fe9818b3a26f3adca903474700b4a8f19fddf0bff9a3111f",
+    "localized_english_iw02.dat": "eff54fd861bb60f9c28e2034be6c8bde148e5d259ac0d3556f1e772f056bf315",
+    "localized_english_iw03.dat": "246336857ea2549833c805abfe02e5f8b8f49c80ae4c14b55e1d0be08318a37f",
+    "localized_english_iw04.dat": "b89f65151420e25452fbdf1e747f992211a4b1803dec54171b9f9380f58d12e3",
+    "localized_english_iw05.dat": "a8a1b4ef98640ae76ad090406ab664d31f042dc4e0a9f7a174b30433678e93a2",
+    "localized_english_iw06.dat": "4ad4087b9b473e109e18e1824bc3b4ee54da8bf0cf32d3bb30605d971fdcb015"
+  },
+  "vendor_files": {
+    "maps/mp/bots/_bot_internal.gsc": "1d4eb06fc2160baf12ab12e994d01ed94599a58c1be37377685a8d46cf0f3b0d",
+    "maps/mp/bots/_bot_utility.gsc": "2e38e1ab5914ce1553dbe4a747198ead126b2ed57b53f18965763a579f1149b3",
+    "maps/mp/bots/waypoints/_custom_map.gsc": "b8bdabd8b749ff72b2ecb9b441116df99a6d9e79288e6e1456510c5a162d6c93",
+    "scripts/bots_adapter_cod4x.gsc": "1cda6e8d15d117dcbac68704c4edcd2de2dfd3e36cca0e9f270dba788ad09dca",
+    "scriptdata/waypoints/mp_backlot_wp.csv": "5e4361023be5db57033c85acbf07c39679f0761658c6bfe3da43b27e41f7d124",
+    "scriptdata/waypoints/mp_bloc_wp.csv": "88e5c4bab4aa79478217a244c1764a16e912602fcffe656c055285bad8333bc7",
+    "scriptdata/waypoints/mp_bog_wp.csv": "617a586088969e15afc1f93ccf8fc10723f9eb0a80c776e17db1ddefa96f118d",
+    "scriptdata/waypoints/mp_broadcast_wp.csv": "ac813d66b20230eba2c57b792044feb4981324f75afe8802f3581154b327975c",
+    "scriptdata/waypoints/mp_carentan_wp.csv": "48f353aad8d1f7867fb3b25068e9f6960b6ea2df723092733243d3f6f7f597a7",
+    "scriptdata/waypoints/mp_cargoship_wp.csv": "30e3e4c6aef71afb41f29665deb0021222780c6c6fd8ae42ebeab0eb08bf5b97",
+    "scriptdata/waypoints/mp_citystreets_wp.csv": "010d45b1e51bf3fb19549b33e2b978f857bd86451da8016913c56ac4e9e0148f",
+    "scriptdata/waypoints/mp_convoy_wp.csv": "ce0e753938930fc0d1434801f6b79656cfd2a3cff743f1568e979eac84685450",
+    "scriptdata/waypoints/mp_countdown_wp.csv": "842817da9b7e05d4385723014b9bb6bea19f626679f225b4fc42e2b9eeba12e6",
+    "scriptdata/waypoints/mp_crash_snow_wp.csv": "931723191a3798dac256d65cf7d80bc27fc32ca12d37608fef1c6a17be6e53c4",
+    "scriptdata/waypoints/mp_crash_wp.csv": "774b19bc6305e9a1459c44ab3c108904fc259d669384ad24e1d4e1c6fabbdcf6",
+    "scriptdata/waypoints/mp_creek_wp.csv": "00e3247c73499e30493a3ca49e8369efe0931ea70be80c2672eb98cc8622521b",
+    "scriptdata/waypoints/mp_crossfire_wp.csv": "89109bf7605510fb28430430caac8cc118a0212782ddb5901ff2909252694082",
+    "scriptdata/waypoints/mp_farm_wp.csv": "7a0a4c20f153069a9e8634628e4e72e5d67b49fb86afd5d4fd917464caf6d820",
+    "scriptdata/waypoints/mp_killhouse_wp.csv": "91b23c89c797e674182a6637961798a21dd56aa101617ae2859acdbee5e07488",
+    "scriptdata/waypoints/mp_overgrown_wp.csv": "e14219edf82b1d64e8ef8018cf0a6763ab9979ea1b44b5ed22e4044cdead7df4",
+    "scriptdata/waypoints/mp_pipeline_wp.csv": "3c893a49a04b9803271f4d19203e4748ff2fda1f334b7f0ffe3d216d2363b7a3",
+    "scriptdata/waypoints/mp_shipment_wp.csv": "97e2ae04ab405e6efe5d1f692b11d703fc47e5224e0d576aa3d26dbdf56d3cc6",
+    "scriptdata/waypoints/mp_showdown_wp.csv": "7a8d68fd8d220fc250c4e6fdb41dc8d23755eb5774a90794108ceb7e74e8123f",
+    "scriptdata/waypoints/mp_strike_wp.csv": "cb8f49825342ac702a7a545753a92f7e1165539d89005829df13c0869043b105",
+    "scriptdata/waypoints/mp_vacant_wp.csv": "cda324f82a689551006ce0c9a391d3016049abfdaf8286dd78a09c461345844d"
+  }
+}
