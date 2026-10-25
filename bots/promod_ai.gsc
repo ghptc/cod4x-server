@@ -120,7 +120,7 @@ attach()
         self thread maps\mp\bots\_bot_internal::sprint_watch();
         self thread maps\mp\bots\_bot_internal::spawned();
     }
-    println("PMBOT CLASS slot=" + self getentitynumber() + " team=" + self.pers["team"] + " class=" + self.pers["class"]);
+    bot_trace("PMBOT CLASS slot=" + self getentitynumber() + " team=" + self.pers["team"] + " class=" + self.pers["class"]);
 }
 
 // Upstream _bot::doPlayerModelFix, kept outside its callback/admin initializer.
@@ -152,7 +152,7 @@ weapon_selection()
         if (weapons.size > 0)
         {
             self botweapon(weapons[0]);
-            println("PMBOT WEAPON_SELECT slot=" + self getentitynumber() + " weapon=" + weapons[0]);
+            bot_trace("PMBOT WEAPON_SELECT slot=" + self getentitynumber() + " weapon=" + weapons[0]);
         }
     }
 }
@@ -165,7 +165,7 @@ observe_fire()
     for (;;)
     {
         self waittill("weapon_fired");
-        println("PMBOT FIRE slot=" + self getentitynumber() + " weapon=" + self getcurrentweapon());
+        bot_trace("PMBOT FIRE slot=" + self getentitynumber() + " weapon=" + self getcurrentweapon());
     }
 }
 
@@ -180,6 +180,13 @@ observe()
         enemy = -1;
         if (isdefined(self.bot.target) && isdefined(self.bot.target.entity))
             enemy = self.bot.target.entity getentitynumber();
-        println("PMBOT SAMPLE slot=" + self getentitynumber() + " state=" + self.sessionstate + " pos=" + self.origin + " angles=" + self getplayerangles() + " hp=" + self.health + " weapon=" + self getcurrentweapon() + " ammo=" + self getammocount(self getcurrentweapon()) + " enemy=" + enemy + " wp=" + self.bot.next_wp);
+        bot_trace("PMBOT SAMPLE slot=" + self getentitynumber() + " state=" + self.sessionstate + " pos=" + self.origin + " angles=" + self getplayerangles() + " hp=" + self.health + " weapon=" + self getcurrentweapon() + " ammo=" + self getammocount(self getcurrentweapon()) + " enemy=" + enemy + " wp=" + self.bot.next_wp);
     }
+}
+
+// Debug evidence uses the existing game log without changing Promod callbacks.
+bot_trace(message)
+{
+    if (getdvarint("bot_debug"))
+        logprint(message + "\n");
 }

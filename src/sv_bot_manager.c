@@ -13,6 +13,7 @@ static int next_fill;
 static int BotHumanCount(client_t *exclude)
 {
     int i, humans = 0;
+    if (!sv_maxclients) return 0;
     for (i = 0; i < sv_maxclients->integer; ++i) {
         client_t *cl = &svs.clients[i];
         if (cl != exclude && cl->state >= CS_CONNECTED && cl->netchan.remoteAddress.type != NA_BOT)
@@ -59,6 +60,10 @@ static void BotStatus(void)
     int i, bots = 0, pending = 0;
     const char *state = fill_state == BOT_FILL_ACTIVE ? "active" :
         fill_state == BOT_FILL_PAUSED_EMPTY ? "paused-awaiting-human" : "paused-with-humans";
+    if (!com_sv_running || !com_sv_running->integer) {
+        Com_Printf(CON_CHANNEL_SERVER, "BOT_STATUS server-not-running\n");
+        return;
+    }
     for (i = 0; i < sv_maxclients->integer; ++i) {
         client_t *cl = &svs.clients[i];
         if (cl->state < CS_CONNECTED) continue;
@@ -73,6 +78,7 @@ void SV_BotManagerInit(void)
 {
     bot_enable = Cvar_RegisterBool("bot_enable", qfalse, 0, "Enable the experimental Promod bot integration");
     bot_ai_ready = Cvar_RegisterBool("bot_ai_ready", qfalse, 0, "Set by the server AI script after loading map navigation");
+    Cvar_RegisterBool("bot_debug", qfalse, 0, "Write bot gameplay evidence to the game log");
     Cmd_AddPCommand("bot_kickall", BotKickAll, 80);
     Cmd_AddPCommand("bot_autofill", BotAutoFill, 80);
     Cmd_AddPCommand("bot_status", BotStatus, 20);
