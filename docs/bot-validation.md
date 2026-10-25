@@ -83,3 +83,34 @@ the metadata fix is not presented as a completed human-client test. The initial
 legacy fixture assumed immediate backend rejection and was rejected as evidence;
 its corrected pending-update expectation follows existing upstream behavior.
 All earlier evidence remains preserved. No production service was changed.
+
+## Population and difficulty controls — local qualification
+
+Native code revision `7e6167e56d4816e8022a0bfb8419bd9290c1b7e0`, clean
+Linux ELF32/i386 build 1244, SHA-256
+`a897db668b4e40d957b34a01a5cc88be8d1b4b6efd5d57384b937124f9520b38`.
+The same pinned GCC/NASM image was used. Test revision `bb40706` additionally
+waits for native AI readiness before manual-add assertions; native code is
+unchanged. Six integrity tests and the expanded C policy/count-parser tests pass.
+
+Accepted isolated scenarios: controls (117 s), existing policy (75 s), active
+rotation (135 s), missing waypoints (30 s), and all 21 installed map wrappers
+with zero bots (240 s). Counts 0/2/3/4/12, caps, invalid arguments, slot removal
+and reuse, map-persistent pause/limit, last-human resume and missing-navigation
+rejection all passed. Six simultaneous human handshakes displaced six bots;
+a seventh displaced another bot after bot_enable was disabled. These fixtures
+do not enter the graphical game world. A real unauthenticated RCON request was
+denied without changing population. Existing command-power routing is retained;
+new mutation commands register power 80, status 20.
+
+Mixed bots selected multiple real BW tiers in 1..7; easy/hard/fixed changes
+produced the expected original aim profiles. The legacy fixed profile remains
+the default. Active rotation still showed combat and navigation; no script or
+fatal errors were recorded in accepted runs. sv_pure=1 and all eight headers
+remain intact. Early fixed-time manual-add tests hit legitimate round-transition
+rejections and are retained as rejected evidence; readiness is never bypassed.
+
+Evidence and exact private artifacts are preserved outside Git under
+`~/Projects/cod4x-gameplay-controls/20261025`. No EC2 access or deployment was
+performed for these changes. Graphical FPS/PB/human combat and voice tests
+remain separate pending qualifications.

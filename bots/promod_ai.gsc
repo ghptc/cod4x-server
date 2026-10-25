@@ -147,12 +147,7 @@ attach()
     self notify("promod_ai_reset");
     self.promod_ai_core_spawned = undefined;
     self maps\mp\bots\_bot_internal::added();
-    self.pers["bots"]["skill"]["aim_time"] = 0.25;
-    self.pers["bots"]["skill"]["init_react_time"] = 300;
-    self.pers["bots"]["skill"]["reaction_time"] = 300;
-    self.pers["bots"]["skill"]["fov"] = 0;
-    self.pers["bots"]["behavior"]["nade"] = 0;
-    self.pers["bots"]["behavior"]["jump"] = 0;
+    self thread difficulty_control();
     self maps\mp\bots\_bot_internal::connected();
     self thread model_ready();
     self thread weapon_selection();
@@ -185,6 +180,40 @@ attach()
         self thread maps\mp\bots\_bot_internal::spawned();
     }
     bot_trace("PMBOT CLASS slot=" + self getentitynumber() + " team=" + self.pers["team"] + " class=" + self.pers["class"]);
+}
+
+// Reuse the pinned seven Bot Warfare profiles without its stock gametype/admin callbacks.
+difficulty_control()
+{
+    self endon("disconnect");
+    self endon("promod_ai_reset");
+    level endon("game_ended");
+    previous = undefined;
+    for (;;)
+    {
+        mode = getdvarint("bot_skill");
+        if (!isdefined(previous) || previous != mode)
+        {
+            if (mode == -1)
+            {
+                self maps\mp\bots\difficulty::reset_profile();
+                self.pers["bots"]["skill"]["aim_time"] = 0.25;
+                self.pers["bots"]["skill"]["init_react_time"] = 300;
+                self.pers["bots"]["skill"]["reaction_time"] = 300;
+                self.pers["bots"]["skill"]["fov"] = 0;
+            }
+            else
+            {
+                self maps\mp\bots\difficulty::set_diff();
+                self maps\mp\bots\difficulty::apply_profile();
+            }
+            self.pers["bots"]["behavior"]["nade"] = 0;
+            self.pers["bots"]["behavior"]["jump"] = 0;
+            previous = mode;
+            bot_trace("PMBOT SKILL slot=" + self getentitynumber() + " mode=" + mode + " base=" + self.pers["bots"]["skill"]["base"] + " aim=" + self.pers["bots"]["skill"]["aim_time"]);
+        }
+        wait 0.5;
+    }
 }
 
 // Upstream _bot::doPlayerModelFix, kept outside its callback/admin initializer.

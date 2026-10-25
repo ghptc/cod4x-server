@@ -22,6 +22,16 @@ int main(int argc, char **argv)
     assert(bind(fd, (struct sockaddr *)&local, sizeof(local)) == 0);
     assert(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == 0);
     assert(connect(fd, (struct sockaddr *)&address, sizeof(address)) == 0);
+    if (argc > 1 && !strcmp(argv[1], "--reject-rcon")) {
+        const char denied[] = "\xff\xff\xff\xff" "rcon invalid-test-password bot_limit 0\n";
+        assert(send(fd, denied, sizeof(denied)-1, 0) > 0);
+        int bytes = recv(fd, reply, sizeof(reply)-1, 0);
+        assert(bytes > 4); reply[bytes] = 0;
+        int rejected = strstr(reply + 4, "Bad rcon") != NULL;
+        puts(rejected ? "RCON_FIXTURE denied" : "RCON_FIXTURE unexpected");
+        close(fd);
+        return rejected ? 0 : 2;
+    }
     const char request[] = "\xff\xff\xff\xffgetchallenge 123456";
     assert(send(fd, request, sizeof(request)-1, 0) > 0);
     int n = recv(fd, reply, sizeof(reply)-1, 0);

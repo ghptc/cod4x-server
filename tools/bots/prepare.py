@@ -12,6 +12,34 @@ import zlib
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def source_block(source, pattern):
+    match = re.search(pattern + r'\s*\{', source, re.M)
+    if not match:
+        raise ValueError('Unexpected pinned Bot Warfare source: ' + pattern)
+    end, depth = match.end(), 1
+    while depth and end < len(source):
+        depth += (source[end] == '{') - (source[end] == '}')
+        end += 1
+    if depth:
+        raise ValueError('Truncated pinned Bot Warfare source')
+    return source[match.start():end]
+
+
+def difficulty_source(internal, script):
+    added = source_block(internal, r'^added\(\)')
+    defaults = '\n'.join(line.strip() for line in added.splitlines()
+                         if re.match(r'\s*self\.pers\[ "bots" \]\[ "(?:skill|behavior)" \]', line))
+    profile = source_block(source_block(script, r'^difficulty\(\)'),
+                           r'switch \( self\.pers\[ "bots" \]\[ "skill" \]\[ "base" \] \)')
+    selection = source_block(script, r'^set_diff\(\)')
+    selection = selection.replace('getdvarint( "bots_skill" )', 'getdvarint( "bot_skill" )')
+    return ('// Derived locally from pinned Bot Warfare; original profile values unchanged.\n'
+            '// Attribution and permission: docs/third-party-bots.md.\n'
+            '#include maps\\mp\\bots\\_bot_utility;\n' + selection + '\n'
+            'apply_profile() {\n' + profile + '\n}\n'
+            'reset_profile() {\n' + defaults + '\n}\n')
+
+
 def digest(path):
     with path.open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
@@ -87,6 +115,8 @@ def main():
     (target / 'waypoints').mkdir(parents=True, exist_ok=True)
     vendor = args.bot_warfare
     internal = (vendor / 'maps/mp/bots/_bot_internal.gsc').read_text()
+    difficulty = difficulty_source(internal, (vendor / 'maps/mp/bots/_bot_script.gsc').read_text())
+    (target / 'difficulty.gsc').write_text(difficulty)
     internal = internal.replace('maps\\mp\\gametypes\\_missions::getweaponclass', 'maps\\mp\\bots\\_bot_utility::getweaponclass')
     internal = internal.replace('self endon( "disconnect" );',
         'self endon( "disconnect" );\n\tself endon( "promod_ai_reset" );\n\tlevel endon( "game_ended" );')

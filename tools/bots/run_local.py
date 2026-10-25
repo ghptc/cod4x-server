@@ -19,7 +19,7 @@ def main():
     p.add_argument('--runtime', type=Path, required=True)
     p.add_argument('--game', type=Path, required=True)
     p.add_argument('--image', default=IMAGE)
-    p.add_argument('--scenario', choices=['gameplay', 'policy', 'rotation', 'burst', 'legacy'], default='gameplay')
+    p.add_argument('--scenario', choices=['gameplay', 'policy', 'rotation', 'burst', 'legacy', 'controls', 'no-waypoints', 'empty-rotation'], default='gameplay')
     p.add_argument('--seconds', type=int, default=90)
     a = p.parse_args()
     runtime = a.runtime.resolve()
@@ -29,6 +29,10 @@ def main():
         p.error('policy scenario requires at least 75 seconds')
     if a.scenario == 'rotation' and a.seconds < 135:
         p.error('rotation scenario requires at least 135 seconds')
+    if a.scenario == 'controls' and a.seconds < 117:
+        p.error('controls scenario requires at least 117 seconds')
+    if a.scenario == 'empty-rotation' and a.seconds < 240:
+        p.error('empty-rotation scenario requires at least 240 seconds')
     if not 20 <= a.seconds <= 600:
         p.error('seconds must be between 20 and 600')
     stamp = time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())
@@ -53,6 +57,40 @@ def main():
            '+set', 'logfile', '2', '+set', 'g_logSync', '1',
            '+set', 'promod_mode', 'custom_public', '+map', 'mp_crash']
     schedule = [(10, 'status', 'bot_status\n'), (a.seconds-2, 'pure', 'sv_pure\nbot_status\n')]
+    if a.scenario == 'controls':
+        schedule += [(10.5, 'reject-rcon', None),
+                     (11, 'invalid', 'bot_limit -1\nbot_add 999\nbot_difficulty 0\nbot_limit 3x\nbot_status\n'),
+                     (12, 'empty', 'bot_kickall\nbot_add 0\nbot_status\n'),
+                     (18, 'add', 'bot_limit 4\nbot_add 3\n'), (19, 'partial', 'bot_status\n'),
+                     (20, 'cap', 'bot_add 12\n'), (23, 'capped', 'bot_status\n'),
+                     (24, 'kick', 'bot_kick 2\n'), (27, 'kicked', 'bot_status\n'),
+                     (28, 'mixed', 'bot_difficulty mixed\n'), (30, 'map', 'map mp_backlot\n'),
+                     (35, 'paused-map', 'bot_status\n'), (36, 'resume', 'bot_autofill 1\n'),
+                     (42, 'limited-fill', 'bot_status\n'), (43, 'zero', 'bot_limit 0\n'),
+                     (46, 'zero-limit', 'bot_status\n'), (48, 'twelve', 'bot_limit 12\n'),
+                     (55, 'full', 'bot_status\n'), (57, 'burst', None), (62, 'six-humans', 'bot_status\n'),
+                     (64, 'disable', 'bot_enable 0\n'), (65, 'admit-disabled', None),
+                     (68, 'disabled-priority', 'bot_status\n'),
+                     (69, 'disconnect', 'bot_enable 1\n' + ''.join(f'clientkick {i}\n' for i in range(7))),
+                     # Preserve the upstream 21-second connection-queue grace period.
+                     (75, 'stop', 'bot_kickall\n'), (90, 'easy', 'bot_difficulty 1\nbot_add 2\n'),
+                     (94, 'easy-status', 'bot_status\n'), (95, 'hard', 'bot_difficulty 7\n'),
+                     (98, 'hard-status', 'bot_status\n'), (99, 'fixed', 'bot_difficulty fixed\n'),
+                     (102, 'fixed-status', 'bot_status\n'), (103, 'refill', 'bot_autofill 1\n'),
+                     (112, 'restored', 'bot_status\n')]
+    if a.scenario == 'no-waypoints':
+        empty = home / 'empty-waypoints'
+        empty.mkdir()
+        pos = cmd.index(a.image)
+        cmd[pos:pos] = ['--mount', f'type=bind,src={empty},dst=/runtime/mods/pml220/scriptdata/waypoints,readonly']
+        schedule += [(12, 'blocked-add', 'bot_add 2\nbot_status\n'),
+                     (15, 'missing-backlot', 'map mp_backlot\n'), (22, 'blocked-map', 'bot_status\n')]
+    if a.scenario == 'empty-rotation':
+        cmd[-2:-2] = ['+set', 'bot_fill_limit', '0']
+        # Every actual installed map wrapper, not an assumed public-mod map list.
+        for i, mapname in enumerate(json.loads((runtime / 'inputs.json').read_text())['maps']):
+            schedule += [(15 + 10*i, 'empty-map-' + mapname, 'map ' + mapname + '\n'),
+                         (22 + 10*i, 'empty-check-' + mapname, 'bot_status\n')]
     if a.scenario == 'policy':
         # Only local stdin commands and real UDP handshake attempts inside the isolated namespace.
         schedule += [(12, 'password', 'g_password local-test\n'), (13, 'reject', None),
@@ -89,6 +127,21 @@ def main():
                     at, label, command = schedule.pop(0)
                     proc.stdin.write(('echo BOT_CHECKPOINT ' + label + '\n').encode())
                     if command is not None:
+                        if a.scenario == 'controls' and label in ['add', 'easy']:
+                            # An empty S&D round can end between scheduled commands.
+                            # Wait for real script readiness, never force/bypass it.
+                            deadline = time.monotonic() + 6
+                            ready = False
+                            while time.monotonic() < deadline:
+                                offset = prefix.with_suffix('.console.log').stat().st_size
+                                proc.stdin.write(b'bot_status\n'); proc.stdin.flush()
+                                time.sleep(0.25)
+                                fresh = prefix.with_suffix('.console.log').read_bytes()[offset:]
+                                if re.search(rb'BOT_STATUS .*ready=1 pure=1', fresh):
+                                    ready = True
+                                    break
+                            if not ready:
+                                raise RuntimeError('AI did not become ready for manual bot addition')
                         proc.stdin.write(command.encode())
                         result = 0
                     else:
@@ -103,6 +156,14 @@ def main():
                                 result |= attempt.returncode
                         elif label == 'legacy':
                             fixture = subprocess.run(['docker', 'exec', name, '/runtime/handshake', '', '127.0.0.2', '7'], capture_output=True, timeout=10)
+                            result = fixture.returncode
+                            log.write(fixture.stdout + fixture.stderr)
+                        elif label == 'admit-disabled':
+                            fixture = subprocess.run(['docker', 'exec', name, '/runtime/handshake', '', '127.0.0.8'], capture_output=True, timeout=10)
+                            result = fixture.returncode
+                            log.write(fixture.stdout + fixture.stderr)
+                        elif label == 'reject-rcon':
+                            fixture = subprocess.run(['docker', 'exec', name, '/runtime/handshake', '--reject-rcon'], capture_output=True, timeout=10)
                             result = fixture.returncode
                             log.write(fixture.stdout + fixture.stderr)
                         else:

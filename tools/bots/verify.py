@@ -31,10 +31,41 @@ def main():
     current = None
     for line in console.splitlines():
         if line.startswith('BOT_CHECKPOINT '): current = line.split()[1]
-        match = re.search(r'BOT_STATUS enabled=1 state=(\S+) humans=(\d+) connecting=\d+ bots=(\d+) ready=(\d+) pure=(\d+)', line)
+        match = re.search(r'BOT_STATUS enabled=[01] state=(\S+) humans=(\d+) connecting=\d+ bots=(\d+) ready=(\d+) pure=(\d+)', line)
         if match and current:
             checkpoints[current] = (match[1], int(match[2]), int(match[3]), int(match[4]), int(match[5]))
-    if result['scenario'] == 'legacy':
+    if result['scenario'] == 'controls':
+        expected = {'status': ('active', 0, 12), 'invalid': ('active', 0, 12),
+                    'empty': ('paused-awaiting-human', 0, 0), 'partial': ('paused-awaiting-human', 0, 3),
+                    'capped': ('paused-awaiting-human', 0, 4), 'kicked': ('paused-awaiting-human', 0, 2),
+                    'paused-map': ('paused-awaiting-human', 0, 0), 'limited-fill': ('active', 0, 4),
+                    'zero-limit': ('active', 0, 0), 'full': ('active', 0, 12),
+                    'six-humans': ('active', 6, 6), 'disabled-priority': ('active', 7, 5),
+                    'easy-status': ('paused-awaiting-human', 0, 2), 'hard-status': ('paused-awaiting-human', 0, 2),
+                    'fixed-status': ('paused-awaiting-human', 0, 2), 'restored': ('active', 0, 12)}
+        for name, wanted in expected.items():
+            observed = checkpoints.get(name)
+            checks[name] = bool(observed and observed[:3] == wanted and observed[4] == 1)
+        checks['seven_human_handshakes'] = console.count('HANDSHAKE_REPLY connectResponse') == 7
+        checks['fixtures_passed'] = all(e['exit_code'] == 0 for e in result['events'])
+        checks['unauthenticated_admin_denied'] = 'RCON_FIXTURE denied' in console
+        checks['invalid_arguments_rejected'] = console.count('Usage: bot_') >= 4
+        checks['no_full_rejection'] = 'Server is full' not in console
+        mixed = [int(x) for x in re.findall(r'PMBOT SKILL.*mode=0 base=(\d+)', game)]
+        checks['mixed_profiles'] = bool(mixed) and set(mixed) <= set(range(1, 8)) and len(set(mixed)) > 1
+        for mode, aim in [(1, '0.6'), (7, '0.1'), (-1, '0.25')]:
+            checks['profile-' + str(mode)] = bool(re.search(r'PMBOT SKILL.*mode=' + str(mode) + r' .*aim=' + re.escape(aim), game))
+    elif result['scenario'] == 'no-waypoints':
+        for name in ['status', 'blocked-add', 'blocked-map']:
+            checks[name] = checkpoints.get(name) == ('active', 0, 0, 0, 1)
+        checks['blocked_cleanly'] = 'PMBOT BLOCKED no waypoints' in game
+    elif result['scenario'] == 'empty-rotation':
+        inputs = json.loads(prefix.with_suffix('.inputs.json').read_text())
+        for mapname in inputs['maps']:
+            got = checkpoints.get('empty-check-' + mapname)
+            checks['zero-bots-' + mapname] = bool(got and got[:3] == ('active', 0, 0) and got[4] == 1)
+        checks['no_missing_maps'] = 'Can\'t find map' not in console and 'Could not find map' not in console
+    elif result['scenario'] == 'legacy':
         checks['initially_full_of_bots'] = checkpoints.get('status') == ('active', 0, 12, 1, 1)
         checks['legacy_reaches_update_path'] = 'Going from CS_FREE to CS_ZOMBIE for HandshakeFixture' in console and 'Resolving cod4update.cod4x.ovh' in console
         checks['bot_slot_reclaimed'] = 'A human player is connecting' in console
