@@ -229,6 +229,7 @@ cvar_t* fs_basegame;
 cvar_t* fs_gameDirVar;
 cvar_t* fs_ignoreLocalized;
 cvar_t* fs_homepath;
+cvar_t* fs_localizedHeadersPath;
 cvar_t* fs_restrict;
 cvar_t* fs_usedevdir;
 
@@ -2623,8 +2624,123 @@ static pack_t *FS_LoadZipFile( char *zipfile, const char *basename ) {
 }
 
 
+
+static void FS_LoadAdministrativeLocalizedChecksums(void)
+{
+    enum { HEADER_COUNT = 8, HEADER_MAX = 16384 };
+    int checksums[HEADER_COUNT];
+    int i;
+
+    if (!fs_localizedHeadersPath ||
+        !fs_localizedHeadersPath->string[0])
+    {
+        Com_Error(ERR_FATAL, "Localized headers path is empty");
+        return;
+    }
+
+    for (i = 0; i < HEADER_COUNT; ++i)
+    {
+        char filename[MAX_OSPATH];
+        unsigned char buffer[HEADER_MAX];
+        FILE *file;
+        long length;
+        size_t readlen;
+
+        int written;
+
+        if (i < 7)
+        {
+            written = snprintf(
+                filename, sizeof(filename),
+                "%s/addiwdheaders/localized_english_iw%02d.dat",
+                fs_localizedHeadersPath->string, i
+            );
+        }
+        else
+        {
+            written = snprintf(
+                filename, sizeof(filename),
+                "%s/addiwdheaders/jcod4x_00.dat",
+                fs_localizedHeadersPath->string
+            );
+        }
+
+        if (written < 0 || written >= (int)sizeof(filename))
+        {
+            Com_Error(ERR_FATAL, "Localized header path too long");
+            return;
+        }
+
+        file = fopen(filename, "rb");
+        if (!file)
+        {
+            Com_Error(ERR_FATAL,
+                "Cannot open localized header: %s", filename);
+            return;
+        }
+
+        if (fseek(file, 0, SEEK_END) != 0 ||
+            (length = ftell(file)) <= 0 ||
+            length >= HEADER_MAX ||
+            length % 4 != 0 ||
+            fseek(file, 0, SEEK_SET) != 0)
+        {
+            fclose(file);
+            Com_Error(ERR_FATAL,
+                "Invalid localized header: %s", filename);
+            return;
+        }
+
+        readlen = fread(buffer, 1, (size_t)length, file);
+
+        if (readlen != (size_t)length || ferror(file))
+        {
+            fclose(file);
+            Com_Error(ERR_FATAL,
+                "Failed reading localized header: %s", filename);
+            return;
+        }
+
+        fclose(file);
+
+        checksums[i] = LittleLong(
+            Com_BlockChecksumKey32(
+                buffer,
+                (int)length,
+                LittleLong(fs_checksumFeed)
+            )
+        );
+    }
+
+    fs_additionalPureChecksums =
+        Z_Malloc(sizeof(int) * HEADER_COUNT);
+
+    if (!fs_additionalPureChecksums)
+    {
+        Com_Error(ERR_FATAL,
+            "Cannot allocate localized checksums");
+        return;
+    }
+
+    memcpy(fs_additionalPureChecksums,
+           checksums, sizeof(checksums));
+
+    fs_additionalPureChecksumCount = HEADER_COUNT;
+
+    Com_Printf(CON_CHANNEL_FILES,
+        "Loaded %d administrative IWD checksums\n",
+        HEADER_COUNT);
+}
+
 void FS_InitLocalizedIwdPureChecksums()
 {
+    if (fs_localizedHeadersPath &&
+        fs_localizedHeadersPath->string[0])
+    {
+        FS_LoadAdministrativeLocalizedChecksums();
+        return;
+    }
+
     int i;
     fileHandle_t fh;
     int len;
@@ -2932,6 +3048,7 @@ void FS_InitCvars()
 	Com_StartupVariable("fs_cdpath");
 	Com_StartupVariable("fs_basepath");
 	Com_StartupVariable("fs_homepath");
+    Com_StartupVariable("fs_localizedHeadersPath");
 	Com_StartupVariable("fs_game");
 	Com_StartupVariable("fs_copyfiles");
 	Com_StartupVariable("fs_restrict");
@@ -2945,6 +3062,10 @@ void FS_InitCvars()
     if (!homePath || !homePath[0])
         homePath = Sys_Cwd();
     fs_homepath = Cvar_RegisterString("fs_homepath", homePath, 528, "Game home path");
+
+    fs_localizedHeadersPath = Cvar_RegisterString(
+        "fs_localizedHeadersPath", "", CVAR_INIT,
+        "Directory containing localized IWD checksum headers");
 
     FS_SetDirSep(fs_homepath);
     FS_SetDirSep(fs_basepath);
@@ -3412,6 +3533,7 @@ void FS_Shutdown( qboolean closemfp ) {
             Z_Free(fs_additionalPureChecksums);
         }
         fs_additionalPureChecksums = NULL;
+        fs_additionalPureChecksumCount = 0;
 
 #ifdef FS_MISSING
 	if ( closemfp ) {
