@@ -367,7 +367,7 @@ __optimize3 __regparm1 void SV_DirectConnect( netadr_t *from ) {
 	}
 
 	/* Validated challenge/password, queue head: reserve a bot slot synchronously. */
-	if (!newcl && i == 0 && version == sv_protocol->integer)
+	if (!newcl && i == 0)
 		newcl = SV_BotManagerFreeHumanSlot();
 
 	if ( !newcl ) {

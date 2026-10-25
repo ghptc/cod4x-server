@@ -14,6 +14,7 @@ int main(int argc, char **argv)
     struct timeval timeout = {.tv_sec = 2};
     char reply[2048], packet[2048], challenge[64];
     const char *password = argc > 1 ? argv[1] : "";
+    int protocol = argc > 3 ? atoi(argv[3]) : 21;
     struct sockaddr_in local = {.sin_family = AF_INET};
     assert(fd >= 0);
     assert(inet_pton(AF_INET, "127.0.0.1", &address.sin_addr) == 1);
@@ -27,7 +28,7 @@ int main(int argc, char **argv)
     assert(n > 4); reply[n] = 0;
     assert(sscanf(reply + 4, "challengeResponse %63s", challenge) == 1);
     /* Quotation marks are literal protocol delimiters, without backslash escapes. */
-    snprintf(packet, sizeof(packet), "\xff\xff\xff\xff" "connect \"\\protocol\\21\\challenge\\%s\\qport\\24444\\name\\HandshakeFixture\\rate\\25000\\snaps\\20\\password\\%s\"", challenge, password);
+    snprintf(packet, sizeof(packet), "\xff\xff\xff\xff" "connect \"\\protocol\\%d\\challenge\\%s\\qport\\24444\\name\\HandshakeFixture\\rate\\25000\\snaps\\20\\password\\%s\"", protocol, challenge, password);
     assert(send(fd, packet, strlen(packet), 0) > 0);
     n = recv(fd, reply, sizeof(reply)-1, 0);
     assert(n > 4); reply[n] = 0;

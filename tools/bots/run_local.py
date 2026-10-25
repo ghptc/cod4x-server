@@ -19,7 +19,7 @@ def main():
     p.add_argument('--runtime', type=Path, required=True)
     p.add_argument('--game', type=Path, required=True)
     p.add_argument('--image', default=IMAGE)
-    p.add_argument('--scenario', choices=['gameplay', 'policy', 'rotation', 'burst'], default='gameplay')
+    p.add_argument('--scenario', choices=['gameplay', 'policy', 'rotation', 'burst', 'legacy'], default='gameplay')
     p.add_argument('--seconds', type=int, default=90)
     a = p.parse_args()
     runtime = a.runtime.resolve()
@@ -73,6 +73,8 @@ def main():
                      (115, 'rotate-crash', 'map mp_crash\n'), (125, 'active-crash', 'bot_status\n')]
     if a.scenario == 'burst':
         schedule += [(12, 'burst', None), (18, 'burst-admitted', 'bot_status\n')]
+    if a.scenario == 'legacy':
+        schedule += [(12, 'legacy', None), (18, 'legacy-completed', 'bot_status\n')]
     schedule.sort()
     prefix.with_suffix('.command.json').write_text(json.dumps(cmd, indent=2) + '\n')
     shutil.copy2(runtime / 'inputs.json', prefix.with_suffix('.inputs.json'))
@@ -99,6 +101,10 @@ def main():
                                 out, err = attempt.communicate(timeout=10)
                                 log.write(out + err)
                                 result |= attempt.returncode
+                        elif label == 'legacy':
+                            fixture = subprocess.run(['docker', 'exec', name, '/runtime/handshake', '', '127.0.0.2', '7'], capture_output=True, timeout=10)
+                            result = fixture.returncode
+                            log.write(fixture.stdout + fixture.stderr)
                         else:
                             password = 'wrong' if label == 'reject' else 'local-test'
                             fixture = subprocess.run(['docker', 'exec', name, '/runtime/handshake', password], capture_output=True, timeout=10)
