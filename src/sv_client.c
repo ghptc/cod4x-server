@@ -28,6 +28,7 @@
 #include "huffman.h"
 #include "msg.h"
 #include "server.h"
+#include "sv_bots.h"
 #include "net_game_conf.h"
 #include "misc.h"
 #include "g_sv_shared.h"
@@ -365,6 +366,10 @@ __optimize3 __regparm1 void SV_DirectConnect( netadr_t *from ) {
 		}
 	}
 
+	/* Validated challenge/password, queue head: reserve a bot slot synchronously. */
+	if (!newcl && i == 0)
+		newcl = SV_BotManagerFreeHumanSlot();
+
 	if ( !newcl ) {
 		if(i == 10){
 		    NET_OutOfBandPrint( NS_SERVER, from, "error\nServer is full. More than 10 players are in queue.\n" );
@@ -506,6 +511,7 @@ __optimize3 __regparm1 void SV_DirectConnect( netadr_t *from ) {
 #endif
 
 	newcl->state = CS_CONNECTED;
+	if (version == sv_protocol->integer) SV_BotManagerHumanJoined();
 	newcl->nextSnapshotTime = svs.time;
 	newcl->lastPacketTime = svs.time;
 	newcl->lastConnectTime = svs.time;
@@ -893,6 +899,8 @@ __cdecl void SV_DropClientInternal( client_t *drop, const char *reason, qboolean
 	if(!reason)
 		reason = "Unknown reason for dropping";
 
+
+    SV_BotManagerHumanLeaving(drop);
 
 	Com_Printf(CON_CHANNEL_SERVER,"Player %s^7, %i dropped: %s\n", clientName, clientnum, reason);
 	HL2Rcon_EventClientLeave(clientnum);
@@ -1295,6 +1303,8 @@ gentity_t* SV_AddBotClient( char* requested_name ){
 	Info_SetValueForKey( userinfo, "ip", NET_AdrToString( &botnet ) );
 
 	//gotnewcl:
+	Com_Memset(&g_botai[i], 0, sizeof(g_botai[i]));
+	g_botai[i].weapon = 1;
 	Com_Memset(cl, 0x00, sizeof(client_t));
 
 	cl->power = 0; //Sets the default power for the client

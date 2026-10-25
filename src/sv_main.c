@@ -3137,6 +3137,7 @@ void SV_TryLoadXAC();
 void SV_Init(){
     SV_AddOperatorCommands();
     SV_InitCvarsOnce();
+    SV_BotManagerInit();
     SVC_RateLimitInit( );
     SV_InitBanlist();
     Init_CallVote();
@@ -3516,6 +3517,7 @@ qboolean SV_FFAPlayerCanBlock(){
 
 //Few custom added things which should happen if we load a new level or restart a level
 void SV_PreLevelLoad(){
+    SV_BotManagerMapStart();
     Com_UpdateRealtime();
     time_t realtime = Com_GetRealtime();
     char *timestr = ctime(&realtime);
@@ -3628,6 +3630,7 @@ qboolean SV_Map( const char *levelname ) {
 
 
 void SV_PreFastRestart(){
+    SV_BotManagerMapStart();
     PHandler_Event(PLUGINS_ONPREFASTRESTART, NULL);
 }
 void SV_PostFastRestart(){
@@ -4104,6 +4107,7 @@ SV_PreFrame
 */
 void SV_PreFrame()
 {
+  SV_BotManagerFrame();
   SV_UpdateBots();
   if ( cvar_modifiedFlags & 0x404 )
   {

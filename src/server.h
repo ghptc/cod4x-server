@@ -681,6 +681,12 @@ __optimize2 __regparm1 qboolean SV_Frame( unsigned int usec );
 unsigned int SV_FrameUsec( void );
 
 void SV_RemoveAllBots( void );
+void SV_BotManagerInit(void);
+void SV_BotManagerFrame(void);
+void SV_BotManagerMapStart(void);
+void SV_BotManagerHumanJoined(void);
+void SV_BotManagerHumanLeaving(client_t *cl);
+client_t *SV_BotManagerFreeHumanSlot(void);
 
 const char* SV_GetMapRotation( void );
 
