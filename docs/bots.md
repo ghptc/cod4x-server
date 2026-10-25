@@ -75,6 +75,25 @@ gcc -std=c11 -Wall -Wextra -Werror tests/test_bot_policy.c -o /tmp/cod4x-bot-pol
 make -j4
 ```
 
+For isolated runtime regressions, compile `tests/bot_handshake.c` to
+`<runtime>/handshake` using the runtime's own GCC/toolchain environment. The
+fixture sends a real challenge/connect exchange only to namespace loopback;
+it does not complete graphical-client authentication or enter gameplay.
+Then run:
+
+```sh
+python3 tools/bots/run_local.py --runtime /private/bot-runtime --game /private/game --scenario policy --seconds 75
+python3 tools/bots/run_local.py --runtime /private/bot-runtime --game /private/game --scenario rotation --seconds 135
+python3 tools/bots/run_local.py --runtime /private/bot-runtime --game /private/game --scenario burst --seconds 30
+```
+
+The default image is the exact existing private local builder used in validation;
+`--image` accepts an equivalent local runtime. Images are never pulled implicitly.
+Every scenario invokes `verify.py` and fails on a rejected behavioral assertion,
+not merely a process exit code. Runtime logs and input hashes stay outside Git.
+The burst test uses six different loopback source addresses so the existing
+per-address incomplete-connection DoS protection is not bypassed or disabled.
+
 Use only disposable Docker runtimes, game directories mounted read-only, no
 network/ports exposed to production, and distinct home directories. Basic debug
 evidence is opt-in with `+set bot_debug 1`; this is ordinary test logging, not an

@@ -45,7 +45,7 @@ def main():
                 raise SystemExit('Input hash mismatch: ' + str(directory / name))
     destination = args.output.resolve()
     for source in [args.promod, args.bot_warfare, args.headers, args.binary]:
-        if source.resolve().is_relative_to(destination):
+        if source.resolve().is_relative_to(destination) or (source.is_dir() and destination.is_relative_to(source.resolve())):
             raise SystemExit('Output must be separate from all inputs')
     if destination.exists() and not (destination / '.bot-test-runtime').is_file():
         raise SystemExit('Refusing to overwrite a directory not prepared by this tool')
