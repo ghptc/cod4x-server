@@ -17,6 +17,26 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+def rawfile(data, name):
+    marker = b'\xff' * 4 + name.encode() + b'\x00'
+    start = data.find(marker)
+    if start < 8 or data.find(marker, start + 1) != -1:
+        raise ValueError('Missing or ambiguous installed rawfile: ' + name)
+    length = struct.unpack('<I', data[start - 4:start])[0]
+    start += len(marker)
+    if length > 100000 or start + length >= len(data) or data[start + length] != 0:
+        raise ValueError('Unsupported rawfile layout: ' + name)
+    return data[start:start + length].decode()
+
+
+def punkbuster_policy(source):
+    # Preserve every other warning/check; never report PB enabled when it is not.
+    condition = 'if(!getDvarInt("sv_punkbuster")&&!game["LAN_MODE"]&&!game["PROMOD_PB_OFF"])'
+    if source.count(condition) != 1:
+        raise ValueError('Unexpected installed PunkBuster warning condition')
+    return source.replace(condition, condition[:-1] + '&&!getDvarInt("promod_allow_no_punkbuster"))')
+
+
 def omit_function(source, name):
     match = re.search(r'^' + name + r'\([^)]*\)\s*\{', source, re.M)
     if not match:
@@ -35,6 +55,8 @@ def main():
     parser.add_argument('--headers', type=Path, required=True)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--allow-no-punkbuster', action='store_true',
+                        help='Generate an opt-in PB-warning policy overlay; does not enable/disable PB')
     args = parser.parse_args()
     lock = json.loads((ROOT / 'bots/dependencies.json').read_text())
     for directory, files in [(args.promod, lock['promod']['files']),
@@ -86,6 +108,14 @@ def main():
     if data[:12] != b'IWffu100\x05\x00\x00\x00':
         raise SystemExit('Unsupported installed fastfile')
     data = zlib.decompress(data[12:])
+    policy = mod / 'promod/servercheck.gsx'
+    if args.allow_no_punkbuster:
+        script = punkbuster_policy(rawfile(data, 'promod/servercheck.gsc'))
+        policy.parent.mkdir(exist_ok=True)
+        policy.write_text('// Private derived Promod overlay; original checks retained. See docs/punkbuster.md.\n' + script)
+    elif policy.exists():
+        # Repreparing without the option restores the installed servercheck.
+        policy.unlink()
     maps = []
     for match in re.finditer(rb'\xff{4}(.{4})\xff{4}(maps/mp/mp_[a-z0-9_]+\.gsc)\x00', data, re.S):
         length = struct.unpack('<I', match[1])[0]
@@ -102,6 +132,7 @@ def main():
         output.write_text(wrapper)
         maps.append(output.stem)
     manifest = {'maps': maps, 'binary_sha256': digest(destination / 'cod4x18_dedrun'),
+                'punkbuster_warning_policy_overlay': args.allow_no_punkbuster,
                 'ai_source_sha256': digest(ROOT / 'bots/promod_ai.gsc'),
                 'dependency_lock_sha256': digest(ROOT / 'bots/dependencies.json'),
                 'promod': lock['promod']['files'], 'headers': lock['integrity_headers']}
