@@ -25,6 +25,7 @@
     "localized_english_iw06.dat": "4ad4087b9b473e109e18e1824bc3b4ee54da8bf0cf32d3bb30605d971fdcb015"
   },
   "vendor_files": {
+    "maps/mp/bots/_bot_script.gsc": "200aff2734508c229c4707e5c2911bede337d4d2ad9d7f4c17217cb3b62c15f3",
     "maps/mp/bots/_bot_internal.gsc": "1d4eb06fc2160baf12ab12e994d01ed94599a58c1be37377685a8d46cf0f3b0d",
     "maps/mp/bots/_bot_utility.gsc": "2e38e1ab5914ce1553dbe4a747198ead126b2ed57b53f18965763a579f1149b3",
     "maps/mp/bots/waypoints/_custom_map.gsc": "b8bdabd8b749ff72b2ecb9b441116df99a6d9e79288e6e1456510c5a162d6c93",

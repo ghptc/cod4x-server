@@ -6,9 +6,40 @@
 #include "qcommon_io.h"
 #include "sv_bot_policy.h"
 
-static cvar_t *bot_enable, *bot_ai_ready;
+static cvar_t *bot_enable, *bot_ai_ready, *bot_fill_limit, *bot_skill;
 static bot_fill_state_t fill_state = BOT_FILL_ACTIVE;
 static int next_fill;
+
+static int BotCount(void)
+{
+    int i, count = 0;
+    if (!sv_maxclients || !com_sv_running || !com_sv_running->integer) return 0;
+    for (i = 0; i < sv_maxclients->integer; ++i)
+        if (svs.clients[i].state >= CS_CONNECTED && svs.clients[i].netchan.remoteAddress.type == NA_BOT) ++count;
+    return count;
+}
+
+static qboolean BotCanAdd(void)
+{
+    return com_sv_running && com_sv_running->integer && bot_enable->boolean &&
+        bot_ai_ready->boolean && sv.state == SS_GAME && !sv.restarting &&
+        sv_pure->boolean && !strcmp(sv_g_gametype->string, "sd");
+}
+
+static qboolean BotQueueWaiting(void)
+{
+    int i;
+    for (i = 0; i < 10; ++i)
+        if (svs.connectqueue[i].lasttime && svs.connectqueue[i].lasttime + 21 >= Com_GetRealtime()) return qtrue;
+    return qfalse;
+}
+
+static qboolean BotAddOne(void)
+{
+    char name[32];
+    Com_sprintf(name, sizeof(name), "[BOT] Promod %02d", BotCount() + 1);
+    return SV_AddBotClient(name) != NULL;
+}
 
 static int BotHumanCount(client_t *exclude)
 {
@@ -35,10 +66,61 @@ void SV_BotManagerHumanLeaving(client_t *cl)
 
 static void BotKickAll(void)
 {
+    if (Cmd_Argc() != 1) { Com_Printf(CON_CHANNEL_SERVER, "Usage: bot_kickall\n"); return; }
     /* Set pause before disconnect callbacks can run. */
     fill_state = BotFill_Pause(BotHumanCount(NULL));
-    SV_RemoveAllBots();
+    if (BotCount()) SV_RemoveAllBots();
     Com_Printf(CON_CHANNEL_SERVER, "Bots removed; Auto-Fill paused.\n");
+}
+
+static qboolean BotCountArgument(int *count)
+{
+    if (Cmd_Argc() == 2 && BotControl_Count(Cmd_Argv(1), count)) return qtrue;
+    Com_Printf(CON_CHANNEL_SERVER, "Usage: %s <count 0..12>\n", Cmd_Argv(0));
+    return qfalse;
+}
+
+static void BotAdd(void)
+{
+    int count, added = 0, allowed;
+    if (!BotCountArgument(&count) || !count) return;
+    if (!BotCanAdd() || BotQueueWaiting()) {
+        Com_Printf(CON_CHANNEL_SERVER, "Bots not ready, or a human connection is queued. No bots added.\n");
+        return;
+    }
+    allowed = BotFill_Target(BotHumanCount(NULL), sv_maxclients->integer, bot_fill_limit->integer) - BotCount();
+    while (added < count && added < allowed && BotAddOne()) ++added;
+    Com_Printf(CON_CHANNEL_SERVER, "Added %d bots.\n", added);
+}
+
+static void BotKick(void)
+{
+    int count, removed = 0;
+    if (!BotCountArgument(&count) || !count) return;
+    fill_state = BotFill_Pause(BotHumanCount(NULL));
+    while (removed < count && BotCount() && SV_RemoveBot()) ++removed;
+    Com_Printf(CON_CHANNEL_SERVER, "Removed %d bots; Auto-Fill paused.\n", removed);
+}
+
+static void BotLimit(void)
+{
+    int count;
+    if (!BotCountArgument(&count)) return;
+    Cvar_SetInt(bot_fill_limit, count);
+    /* Enforce zero/reductions even while Auto-Fill is paused. */
+    while (BotCount() > count && SV_RemoveBot()) {}
+}
+
+static void BotDifficulty(void)
+{
+    int skill;
+    if (Cmd_Argc() == 2) {
+        if (!strcmp(Cmd_Argv(1), "fixed")) skill = -1;
+        else if (!strcmp(Cmd_Argv(1), "mixed")) skill = 0;
+        else if (!BotControl_Count(Cmd_Argv(1), &skill) || skill < 1 || skill > 7) skill = -2;
+        if (skill >= -1) { Cvar_SetInt(bot_skill, skill); return; }
+    }
+    Com_Printf(CON_CHANNEL_SERVER, "Usage: bot_difficulty <fixed|mixed|1..7>\n");
 }
 
 static void BotAutoFill(void)
@@ -70,18 +152,25 @@ static void BotStatus(void)
         if (cl->netchan.remoteAddress.type == NA_BOT) ++bots;
         else if (cl->state != CS_ACTIVE) ++pending;
     }
-    Com_Printf(CON_CHANNEL_SERVER, "BOT_STATUS enabled=%d state=%s humans=%d connecting=%d bots=%d ready=%d pure=%d\n",
-        bot_enable->boolean, state, BotHumanCount(NULL), pending, bots, bot_ai_ready->boolean, sv_pure->integer);
+    Com_Printf(CON_CHANNEL_SERVER, "BOT_STATUS enabled=%d state=%s humans=%d connecting=%d bots=%d ready=%d pure=%d limit=%d difficulty=%s\n",
+        bot_enable->boolean, state, BotHumanCount(NULL), pending, bots, bot_ai_ready->boolean, sv_pure->integer,
+        bot_fill_limit->integer, bot_skill->integer == -1 ? "fixed" : bot_skill->integer == 0 ? "mixed" : va("%d", bot_skill->integer));
 }
 
 void SV_BotManagerInit(void)
 {
     bot_enable = Cvar_RegisterBool("bot_enable", qfalse, 0, "Enable the experimental Promod bot integration");
     bot_ai_ready = Cvar_RegisterBool("bot_ai_ready", qfalse, 0, "Set by the server AI script after loading map navigation");
+    bot_fill_limit = Cvar_RegisterInt("bot_fill_limit", 12, 0, 12, 0, "Maximum AI bots; humans also consume the 12-slot population");
+    bot_skill = Cvar_RegisterInt("bot_skill", -1, -1, 7, 0, "Bot skill: -1 original fixed profile, 0 mixed, 1..7 Bot Warfare tiers");
     Cvar_RegisterBool("bot_debug", qfalse, 0, "Write bot gameplay evidence to the game log");
     Cmd_AddPCommand("bot_kickall", BotKickAll, 80);
     Cmd_AddPCommand("bot_autofill", BotAutoFill, 80);
     Cmd_AddPCommand("bot_status", BotStatus, 20);
+    Cmd_AddPCommand("bot_add", BotAdd, 80);
+    Cmd_AddPCommand("bot_kick", BotKick, 80);
+    Cmd_AddPCommand("bot_limit", BotLimit, 80);
+    Cmd_AddPCommand("bot_difficulty", BotDifficulty, 80);
 }
 
 void SV_BotManagerMapStart(void)
@@ -94,7 +183,7 @@ void SV_BotManagerMapStart(void)
 client_t *SV_BotManagerFreeHumanSlot(void)
 {
     int i;
-    if (!bot_enable || !bot_enable->boolean) return NULL;
+    /* Existing bot slots yield even when AI/filling was subsequently disabled. */
     for (i = sv_privateClients->integer; i < sv_maxclients->integer; ++i) {
         client_t *cl = &svs.clients[i];
         if (cl->state >= CS_CONNECTED && cl->netchan.remoteAddress.type == NA_BOT) {
@@ -110,22 +199,16 @@ client_t *SV_BotManagerFreeHumanSlot(void)
 
 void SV_BotManagerFrame(void)
 {
-    int i, bots = 0, humans, target;
-    char name[32];
-    if (!bot_enable || !bot_enable->boolean || !bot_ai_ready->boolean ||
-        fill_state != BOT_FILL_ACTIVE || sv.state != SS_GAME || sv.restarting ||
-        !sv_pure->boolean || strcmp(sv_g_gametype->string, "sd")) return;
+    int bots, target;
+    if (!com_sv_running || !com_sv_running->integer || sv.state != SS_GAME || sv.restarting) return;
+    bots = BotCount();
+    target = BotFill_Target(BotHumanCount(NULL), sv_maxclients->integer, bot_fill_limit->integer);
+    if (bots > target) { SV_RemoveBot(); return; }
+    if (!BotCanAdd() || fill_state != BOT_FILL_ACTIVE) return;
     if (next_fill > svs.time && next_fill - svs.time < 3000) return;
     next_fill = svs.time + 250;
     /* Do not consume slots while humans wait in the existing connection queue. */
-    for (i = 0; i < 10; ++i)
-        if (svs.connectqueue[i].lasttime && svs.connectqueue[i].lasttime + 21 >= Com_GetRealtime()) return;
-    humans = BotHumanCount(NULL);
-    target = BotFill_Target(humans, sv_maxclients->integer);
-    for (i = 0; i < sv_maxclients->integer; ++i)
-        if (svs.clients[i].state >= CS_CONNECTED && svs.clients[i].netchan.remoteAddress.type == NA_BOT) ++bots;
-    if (bots > target) { SV_RemoveBot(); return; }
+    if (BotQueueWaiting()) return;
     if (bots >= target) return;
-    Com_sprintf(name, sizeof(name), "[BOT] Promod %02d", bots + 1);
-    SV_AddBotClient(name);
+    BotAddOne();
 }
