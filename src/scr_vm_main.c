@@ -25,6 +25,7 @@
 #include "qcommon_io.h"
 #include "cvar.h"
 #include "cmd.h"
+#include "server.h"
 #include "misc.h"
 #include "sys_main.h"
 #include "sv_bots.h"
@@ -753,6 +754,7 @@ void GScr_LoadGameTypeScript(void)
 
     /**************** Additional *************************/
     script_CallBacks_new[SCR_CB_SCRIPTCOMMAND] = GScr_LoadScriptAndLabel("maps/mp/gametypes/_callbacksetup", "CodeCallback_ScriptCommand", 0);
+    SV_LoadPromodAdminFunctions();
 }
 
 

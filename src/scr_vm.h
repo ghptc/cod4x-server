@@ -756,6 +756,7 @@ void __cdecl Scr_Notify( gentity_t*, unsigned short, unsigned int);
 void __cdecl Scr_NotifyNum( int, unsigned int, unsigned int, unsigned int);
 
 int __cdecl Scr_GetFunctionHandle( const char* scriptName, const char* labelName);
+int GScr_LoadScriptAndLabel(const char *scriptName, const char *labelName, qboolean mandatory);
 short __cdecl Scr_ExecEntThread( gentity_t* ent, int callbackHook, unsigned int numArgs);
 short __cdecl Scr_ExecThread( int callbackHook, unsigned int numArgs);
 void __cdecl Scr_FreeThread( short threadId);

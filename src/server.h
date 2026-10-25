@@ -598,6 +598,7 @@ extern cvar_t* sv_cheats;
 extern cvar_t* sv_consayname;
 extern cvar_t* sv_contellname;
 extern cvar_t* sv_maxclients;
+void SV_LoadPromodAdminFunctions(void);
 extern cvar_t* sv_g_gametype;
 extern cvar_t* sv_pure;
 extern cvar_t* sv_fps;

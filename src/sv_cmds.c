@@ -53,6 +53,134 @@ These commands can only be entered from stdin or by a remote operator datagram
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <math.h>
+
+static cvar_t *sv_promod_admin;
+static int admin_team_function;
+
+void SV_LoadPromodAdminFunctions(void)
+{
+    /* Function handles belong to this script load, never to a previous map. */
+    admin_team_function = 0;
+    if (!sv_promod_admin || !sv_promod_admin->boolean ||
+        strcmp(Cvar_GetVariantString("fs_game"), "mods/pml220") || strcmp(sv_g_gametype->string, "sd")) return;
+    admin_team_function = GScr_LoadScriptAndLabel("maps/mp/cod4x_admin", "set_team", qfalse);
+}
+
+static client_t *SV_AdminTarget(void)
+{
+    const char *text = Cmd_Argv(1);
+    unsigned slot = 0;
+    client_t *target;
+    if (!com_sv_running || !com_sv_running->boolean) {
+        Com_Printf(CON_CHANNEL_SERVER, "Server is not running.\n"); return NULL;
+    }
+    if (!*text) return NULL;
+    for (; *text; ++text) {
+        if (*text < '0' || *text > '9') break;
+        slot = slot * 10 + *text - '0';
+        if (slot >= MAX_CLIENTS) break;
+    }
+    if (*text || slot >= (unsigned)sv_maxclients->integer) {
+        Com_Printf(CON_CHANNEL_SERVER, "Invalid client slot.\n"); return NULL;
+    }
+    target = &svs.clients[slot];
+    if (target->state < CS_CONNECTED) {
+        Com_Printf(CON_CHANNEL_SERVER, "Client slot is not connected.\n"); return NULL;
+    }
+    if (Auth_GetClPower(target) > Cmd_GetInvokerPower()) {
+        Com_Printf(CON_CHANNEL_SERVER, "Cannot administer a player with higher command power.\n"); return NULL;
+    }
+    return target;
+}
+
+static void SV_Mute_f(void)
+{
+    client_t *target;
+    int mode = 2;
+    if (Cmd_Argc() < 2 || Cmd_Argc() > 3 ||
+        (Cmd_Argc() == 3 && strcmp(Cmd_Argv(2), "voice") && strcmp(Cmd_Argv(2), "all"))) {
+        Com_Printf(CON_CHANNEL_SERVER, "Usage: mute <slot> [voice|all]\n"); return;
+    }
+    if (Cmd_Argc() == 3 && !strcmp(Cmd_Argv(2), "voice")) mode = 1;
+    target = SV_AdminTarget();
+    if (!target) return;
+    target->mutelevel = mode;
+    Com_Printf(CON_CHANNEL_SERVER, "ADMIN_MUTE slot=%d level=%d\n", (int)(target - svs.clients), mode);
+    SV_PrintAdministrativeLog("muted client slot %d at level %d", (int)(target - svs.clients), mode);
+}
+
+static void SV_Unmute_f(void)
+{
+    client_t *target;
+    if (Cmd_Argc() != 2) { Com_Printf(CON_CHANNEL_SERVER, "Usage: unmute <slot>\n"); return; }
+    target = SV_AdminTarget();
+    if (!target) return;
+    target->mutelevel = 0;
+    Com_Printf(CON_CHANNEL_SERVER, "ADMIN_MUTE slot=%d level=0\n", (int)(target - svs.clients));
+    SV_PrintAdministrativeLog("unmuted client slot %d", (int)(target - svs.clients));
+}
+
+static void SV_SetTeam_f(void)
+{
+    client_t *target;
+    int i, thread;
+    const char *teams[] = {"allies", "axis", "spectator"};
+    if (Cmd_Argc() != 3) { Com_Printf(CON_CHANNEL_SERVER, "Usage: setteam <slot> <allies|axis|spectator>\n"); return; }
+    for (i = 0; i < 3 && strcmp(Cmd_Argv(2), teams[i]); ++i) {}
+    if (i == 3) { Com_Printf(CON_CHANNEL_SERVER, "Invalid team.\n"); return; }
+    target = SV_AdminTarget();
+    if (!target) return;
+    if (target->state != CS_ACTIVE || sv.state != SS_GAME || sv.restarting || !admin_team_function) {
+        Com_Printf(CON_CHANNEL_SERVER, "Active client and sv_promod_admin=1 before loading Promod S&D required.\n"); return;
+    }
+    /* The helper yields first: animation/game context is not valid in Cbuf_Execute. */
+    Scr_AddString(teams[i]);
+    thread = Scr_ExecEntThread(SV_GentityNum(target - svs.clients), admin_team_function, 1);
+    Scr_FreeThread(thread);
+    Com_Printf(CON_CHANNEL_SERVER, "ADMIN_TEAM_QUEUED slot=%d requested=%s; Promod join/class rules apply.\n", (int)(target - svs.clients), teams[i]);
+    SV_PrintAdministrativeLog("requested team %s for client slot %d", teams[i], (int)(target - svs.clients));
+}
+
+static struct {
+    const char *name;
+    cvar_t *override;
+    float maximum;
+    qboolean fractional;
+} admin_rules[] = {
+    {"scr_sd_timelimit", NULL, 60, qtrue},
+    {"scr_sd_roundlimit", NULL, 1000, qfalse},
+    {"scr_sd_scorelimit", NULL, 1000, qfalse},
+    {"scr_sd_roundswitch", NULL, 1000, qfalse},
+    {"scr_team_fftype", NULL, 3, qfalse},
+    {"sv_voice", NULL, 1, qfalse}
+};
+
+static void SV_PromodRule_f(void)
+{
+    unsigned i;
+    char *end;
+    float value;
+    if (Cmd_Argc() != 3) { Com_Printf(CON_CHANNEL_SERVER, "Usage: promod_rule <supported scr_* rule> <value|default>\n"); return; }
+    if (!sv_promod_admin->boolean || strcmp(Cvar_GetVariantString("fs_game"), "mods/pml220") ||
+        strcmp(Cvar_GetVariantString("promod_mode"), "custom_public")) {
+        Com_Printf(CON_CHANNEL_SERVER, "Promod custom_public and sv_promod_admin=1 required.\n"); return;
+    }
+    for (i = 0; i < sizeof(admin_rules)/sizeof(*admin_rules); ++i)
+        if (!strcmp(Cmd_Argv(1), admin_rules[i].name)) break;
+    if (i == sizeof(admin_rules)/sizeof(*admin_rules)) { Com_Printf(CON_CHANNEL_SERVER, "Unsupported Promod rule.\n"); return; }
+    if (!strcmp(Cmd_Argv(2), "default")) value = -1;
+    else {
+        value = strtof(Cmd_Argv(2), &end);
+        if (!*Cmd_Argv(2) || *end || !isfinite(value) || value < 0 || value > admin_rules[i].maximum ||
+            (!admin_rules[i].fractional && value != (int)value)) {
+            Com_Printf(CON_CHANNEL_SERVER, "Invalid Promod rule value.\n"); return;
+        }
+    }
+    Cvar_SetFloat(admin_rules[i].override, value);
+    Com_Printf(CON_CHANNEL_SERVER, "PROMOD_RULE pending %s=%g; requires prepared --admin-rules overlay and full map reload.\n", admin_rules[i].name, value);
+    SV_PrintAdministrativeLog("queued Promod rule %s=%g for full map reload", admin_rules[i].name, value);
+}
 
 typedef enum {
     SAY_CHAT,
@@ -2325,6 +2453,17 @@ void SV_DoHostMigration_f();
 
 void SV_AddOperatorCommands()
 {
+    unsigned rule;
+    char name[96];
+    sv_promod_admin = Cvar_RegisterBool("sv_promod_admin", qfalse, CVAR_INIT, "Enable optional Promod S&D administration entrypoints");
+    for (rule = 0; rule < sizeof(admin_rules)/sizeof(*admin_rules); ++rule) {
+        Com_sprintf(name, sizeof(name), "cod4x_rule_%s", admin_rules[rule].name);
+        admin_rules[rule].override = Cvar_RegisterFloat(name, -1, -1, admin_rules[rule].maximum, 0, "Optional prepared custom_public override; -1 keeps Promod default");
+    }
+    Cmd_AddPCommand("mute", SV_Mute_f, 35);
+    Cmd_AddPCommand("unmute", SV_Unmute_f, 35);
+    Cmd_AddPCommand("setteam", SV_SetTeam_f, 80);
+    Cmd_AddPCommand("promod_rule", SV_PromodRule_f, 80);
 	//static qboolean	initialized; // Not used?
 	//initialized = qtrue;
 

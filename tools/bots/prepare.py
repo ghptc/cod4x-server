@@ -8,6 +8,7 @@ import re
 import shutil
 import struct
 import zlib
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -15,6 +16,21 @@ ROOT = Path(__file__).resolve().parents[2]
 def digest(path):
     with path.open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def admin_rules(source):
+    # Run after each original assignment, before Promod caches level.* settings.
+    names = ['scr_sd_timelimit', 'scr_sd_roundlimit', 'scr_sd_scorelimit',
+             'scr_sd_roundswitch', 'scr_team_fftype', 'sv_voice']
+    for name in names:
+        pattern = r'(setDvar\( "' + name + r'", [^;]+ \);)'
+        if len(re.findall(pattern, source)) != 1:
+            raise ValueError('Unexpected installed custom_public rule: ' + name)
+        override = 'cod4x_rule_' + name
+        source = re.sub(pattern, lambda match: match[0] +
+            '\n\tif (getDvarInt("sv_promod_admin") && getDvar("' + override + '") != "" && getDvarFloat("' + override + '") >= 0)\n'
+            '\t\tsetDvar("' + name + '", getDvarFloat("' + override + '"));\n', source)
+    return '// Private derived ruleset, 2026-10-25. Original defaults/notices retained; see docs/administration.md.\n' + source
 
 
 def omit_function(source, name):
@@ -35,6 +51,8 @@ def main():
     parser.add_argument('--headers', type=Path, required=True)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--admin-rules', action='store_true',
+                        help='Prepare optional validated custom_public rule overrides')
     args = parser.parse_args()
     lock = json.loads((ROOT / 'bots/dependencies.json').read_text())
     for directory, files in [(args.promod, lock['promod']['files']),
@@ -55,6 +73,19 @@ def main():
     mod.mkdir(parents=True, exist_ok=True)
     for name in lock['promod']['files']:
         shutil.copy2(args.promod / name, mod / name)
+    rulefile = mod / 'promod_ruleset/custom_public.gsx'
+    if args.admin_rules:
+        with zipfile.ZipFile(args.promod / 'z_c_r.iwd') as archive:
+            source = archive.read('promod_ruleset/custom_public.gsc').decode()
+        rulefile.parent.mkdir(exist_ok=True)
+        rulefile.write_text(admin_rules(source))
+        helper = mod / 'maps/mp/cod4x_admin.gsc'
+        helper.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / 'scripts/promod_admin.gsc', helper)
+    elif rulefile.exists():
+        rulefile.unlink()
+    if not args.admin_rules and (mod / 'maps/mp/cod4x_admin.gsc').exists():
+        (mod / 'maps/mp/cod4x_admin.gsc').unlink()
     headers = destination / 'integrity/addiwdheaders'
     headers.mkdir(parents=True, exist_ok=True)
     for name in lock['integrity_headers']:
@@ -102,6 +133,7 @@ def main():
         output.write_text(wrapper)
         maps.append(output.stem)
     manifest = {'maps': maps, 'binary_sha256': digest(destination / 'cod4x18_dedrun'),
+                'admin_rules_overlay': args.admin_rules,
                 'ai_source_sha256': digest(ROOT / 'bots/promod_ai.gsc'),
                 'dependency_lock_sha256': digest(ROOT / 'bots/dependencies.json'),
                 'promod': lock['promod']['files'], 'headers': lock['integrity_headers']}
