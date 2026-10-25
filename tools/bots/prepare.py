@@ -102,6 +102,8 @@ def main():
         output.write_text(wrapper)
         maps.append(output.stem)
     manifest = {'maps': maps, 'binary_sha256': digest(destination / 'cod4x18_dedrun'),
+                'ai_source_sha256': digest(ROOT / 'bots/promod_ai.gsc'),
+                'dependency_lock_sha256': digest(ROOT / 'bots/dependencies.json'),
                 'promod': lock['promod']['files'], 'headers': lock['integrity_headers']}
     (destination / 'inputs.json').write_text(json.dumps(manifest, indent=2) + '\n')
     print(json.dumps({'runtime': str(destination), 'map_overlays': len(maps)}, indent=2))

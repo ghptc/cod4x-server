@@ -31,6 +31,11 @@ int main(int argc, char **argv)
     snprintf(packet, sizeof(packet), "\xff\xff\xff\xff" "connect \"\\protocol\\%d\\challenge\\%s\\qport\\24444\\name\\HandshakeFixture\\rate\\25000\\snaps\\20\\password\\%s\"", protocol, challenge, password);
     assert(send(fd, packet, strlen(packet), 0) > 0);
     n = recv(fd, reply, sizeof(reply)-1, 0);
+    if (n < 0 && protocol <= 7) {
+        puts("HANDSHAKE_REPLY legacy-update-pending");
+        close(fd);
+        return 3;
+    }
     assert(n > 4); reply[n] = 0;
     printf("HANDSHAKE_REPLY %s\n", reply + 4);
     int accepted = strncmp(reply + 4, "connectResponse", 15) == 0;

@@ -36,9 +36,10 @@ def main():
             checkpoints[current] = (match[1], int(match[2]), int(match[3]), int(match[4]), int(match[5]))
     if result['scenario'] == 'legacy':
         checks['initially_full_of_bots'] = checkpoints.get('status') == ('active', 0, 12, 1, 1)
-        checks['legacy_reaches_update_path'] = 'because updatebackend is unavailable' in console
+        checks['legacy_reaches_update_path'] = 'Going from CS_FREE to CS_ZOMBIE for HandshakeFixture' in console and 'Resolving cod4update.cod4x.ovh' in console
         checks['bot_slot_reclaimed'] = 'A human player is connecting' in console
         checks['no_bot_induced_full_response'] = 'Server is full' not in console
+        checks['offline_update_pending_normally'] = any(e['label'] == 'legacy' and e['exit_code'] == 3 for e in result['events'])
     elif result['scenario'] == 'burst':
         checks['initially_full_of_bots'] = checkpoints.get('status') == ('active', 0, 12, 1, 1)
         checks['six_humans_replace_six_bots'] = checkpoints.get('burst-admitted', ())[:3] == ('active', 6, 6)
