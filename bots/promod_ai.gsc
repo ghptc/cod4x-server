@@ -51,8 +51,11 @@ init()
     level thread on_round_end();
     players = getentarray("player", "classname");
     for (i = 0; i < players.size; i++)
+    {
+        players[i] thread watch_player();
         if (players[i].isbot)
             players[i] thread attach();
+    }
     setdvar("bot_ai_ready", 1);
     logprint("PMBOT READY map=" + getdvar("mapname") + " waypoints=" + level.waypointcount + "\n");
 }
@@ -63,9 +66,70 @@ on_connect()
     for (;;)
     {
         level waittill("connected", player);
+        player thread watch_player();
         if (player.isbot)
             player thread attach();
     }
+}
+
+// Perception metadata is required for human opponents too, not only AI entities.
+watch_player()
+{
+    if (isdefined(self.promod_ai_watched))
+        return;
+    self.promod_ai_watched = true;
+    self thread player_model_ready();
+    self thread watch_grenades();
+}
+
+player_model_ready()
+{
+    self endon("disconnect");
+    level endon("game_ended");
+    if (!isalive(self) || self.sessionstate != "playing")
+        self waittill("spawned_player");
+    wait 0.05;
+    self.bot_model_fix = true;
+}
+
+// Reuse Bot Warfare's smoke registration without its admin/callback initializer.
+watch_grenades()
+{
+    self endon("disconnect");
+    level endon("game_ended");
+    for (;;)
+    {
+        self waittill("grenade_fire", grenade, weapon);
+        if (!isdefined(grenade))
+            continue;
+        grenade.name = weapon;
+        if (weapon == "smoke_grenade_mp")
+            grenade thread register_smoke();
+    }
+}
+
+register_smoke()
+{
+    level endon("game_ended");
+    smoke = spawnstruct();
+    smoke.origin = self getorigin();
+    smoke.state = "moving";
+    smoke.grenade = self;
+    level.bots_smokelist ListAdd(smoke);
+    smoke thread track_smoke();
+}
+
+track_smoke()
+{
+    level endon("game_ended");
+    while (isdefined(self.grenade))
+    {
+        self.origin = self.grenade getorigin();
+        wait 0.05;
+    }
+    self.state = "smoking";
+    wait 11.5;
+    level.bots_smokelist ListRemove(self);
 }
 
 on_round_end()
