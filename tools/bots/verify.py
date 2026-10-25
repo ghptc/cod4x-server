@@ -34,7 +34,28 @@ def main():
         match = re.search(r'BOT_STATUS enabled=1 state=(\S+) humans=(\d+) connecting=\d+ bots=(\d+) ready=(\d+) pure=(\d+)', line)
         if match and current:
             checkpoints[current] = (match[1], int(match[2]), int(match[3]), int(match[4]), int(match[5]))
-    if result['scenario'] == 'legacy':
+    if result['scenario'] == 'admin':
+        checks['mute_levels'] = all('ADMIN_MUTE slot=0 level=' + str(level) in console for level in [0, 1, 2])
+        checks['team_spectator'] = 'ADMIN_TEAM slot=0 requested=spectator team=spectator' in game
+        checks['team_axis'] = 'ADMIN_TEAM slot=0 requested=axis team=axis' in game
+        checks['team_allies'] = 'ADMIN_TEAM slot=1 requested=allies team=allies' in game
+        checks['bot_classes_valid_after_move'] = all('ADMIN_BOT_CLASS slot=' + str(slot) + ' class=assault' in game for slot in [0, 1])
+        checks['invalid_admin_input_rejected'] = all(text in console for text in ['Invalid client slot.', 'Invalid team.', 'Invalid Promod rule value.', 'Unsupported Promod rule.'])
+        def section(start, end):
+            pieces = console.split('BOT_CHECKPOINT ' + start + '\n', 1)
+            return pieces[1].split('BOT_CHECKPOINT ' + end + '\n', 1)[0] if len(pieces) == 2 else ''
+        checks['rules_deferred'] = '"ui_timelimit" is: "1.75' in section('rules-before', 'reload-rules')
+        applied = section('rules-applied', 'default-time')
+        for name, value in [('scr_sd_timelimit', '2.25'), ('ui_timelimit', '2.25'), ('scr_sd_roundlimit', '12'), ('scr_sd_scorelimit', '7'), ('scr_sd_roundswitch', '6'), ('scr_team_fftype', '0'), ('sv_voice', '1')]:
+            checks['applied-' + name] = '"' + name + '" is: "' + value in applied
+        after = section('after-map', 'kick-reuse')
+        checks['unauthenticated_mute_denied'] = 'ADMIN_RCON denied' in console and 'ADMIN_MUTE' not in section('rcon-reject', 'bad-admin')
+        checks['fixtures_passed'] = all(event['exit_code'] == 0 for event in result['events'])
+        checks['empty_slots_rejected'] = 'Client slot is not connected.' in section('empty-target', 'pure')
+        checks['default_time_restored'] = '"ui_timelimit" is: "1.75' in after
+        checks['team_handle_refreshed'] = game.count('ADMIN_TEAM slot=0 requested=spectator team=spectator') >= 2
+        checks['kick_slot_reused'] = checkpoints.get('restored') == ('active', 0, 12, 1, 1)
+    elif result['scenario'] == 'legacy':
         checks['initially_full_of_bots'] = checkpoints.get('status') == ('active', 0, 12, 1, 1)
         checks['legacy_reaches_update_path'] = 'Going from CS_FREE to CS_ZOMBIE for HandshakeFixture' in console and 'Resolving cod4update.cod4x.ovh' in console
         checks['bot_slot_reclaimed'] = 'A human player is connecting' in console

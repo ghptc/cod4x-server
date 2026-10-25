@@ -19,7 +19,7 @@ def main():
     p.add_argument('--runtime', type=Path, required=True)
     p.add_argument('--game', type=Path, required=True)
     p.add_argument('--image', default=IMAGE)
-    p.add_argument('--scenario', choices=['gameplay', 'policy', 'rotation', 'burst', 'legacy'], default='gameplay')
+    p.add_argument('--scenario', choices=['gameplay', 'policy', 'rotation', 'burst', 'legacy', 'admin'], default='gameplay')
     p.add_argument('--seconds', type=int, default=90)
     a = p.parse_args()
     runtime = a.runtime.resolve()
@@ -29,6 +29,8 @@ def main():
         p.error('policy scenario requires at least 75 seconds')
     if a.scenario == 'rotation' and a.seconds < 135:
         p.error('rotation scenario requires at least 135 seconds')
+    if a.scenario == 'admin' and a.seconds < 65:
+        p.error('admin scenario requires at least 65 seconds')
     if not 20 <= a.seconds <= 600:
         p.error('seconds must be between 20 and 600')
     stamp = time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())
@@ -53,6 +55,25 @@ def main():
            '+set', 'logfile', '2', '+set', 'g_logSync', '1',
            '+set', 'promod_mode', 'custom_public', '+map', 'mp_crash']
     schedule = [(10, 'status', 'bot_status\n'), (a.seconds-2, 'pure', 'sv_pure\nbot_status\n')]
+    if a.scenario == 'admin':
+        if not json.loads((runtime / 'inputs.json').read_text()).get('admin_rules_overlay'):
+            p.error('admin scenario requires prepare.py --admin-rules')
+        cmd[-2:-2] = ['+set', 'sv_promod_admin', '1']
+        schedule += [(10.5, 'rcon-reject', None),
+                     (11, 'bad-admin', 'mute nonsense\nmute 64\nmute 0 invalid\nsetteam 0 aliens\npromod_rule scr_sd_timelimit nan\npromod_rule scr_sd_roundlimit 0.5\npromod_rule sv_pure 0\n'),
+                     (12, 'voice-mute', 'mute 0 voice\n'), (13, 'all-mute', 'mute 0 all\n'),
+                     (14, 'unmute', 'unmute 0\n'), (15, 'spectator', 'setteam 0 spectator\n'),
+                     (18, 'axis', 'setteam 0 axis\n'), (20, 'spectator-other', 'setteam 1 spectator\n'),
+                     (22, 'allies', 'setteam 1 allies\n'),
+                     (28, 'queue-rules', 'promod_rule scr_sd_timelimit 2.25\npromod_rule scr_sd_roundlimit 12\npromod_rule scr_sd_scorelimit 7\npromod_rule scr_sd_roundswitch 6\npromod_rule scr_team_fftype 0\npromod_rule sv_voice 1\n'),
+                     (30, 'rules-before', 'scr_sd_timelimit\nui_timelimit\n'),
+                     (32, 'reload-rules', 'map mp_crash\n'),
+                     (40, 'rules-applied', 'scr_sd_timelimit\nui_timelimit\nscr_sd_roundlimit\nscr_sd_scorelimit\nscr_sd_roundswitch\nscr_team_fftype\nsv_voice\n'),
+                     (41, 'default-time', 'promod_rule scr_sd_timelimit default\n'),
+                     (44, 'other-map', 'map mp_backlot\n'),
+                     (52, 'after-map', 'scr_sd_timelimit\nui_timelimit\nsetteam 0 spectator\n'),
+                     (55, 'kick-reuse', 'clientkick 0\n'), (60, 'restored', 'bot_status\n'),
+                     (62, 'empty-target', 'bot_kickall\nmute 0\nunmute 0\nsetteam 0 spectator\n')]
     if a.scenario == 'policy':
         # Only local stdin commands and real UDP handshake attempts inside the isolated namespace.
         schedule += [(12, 'password', 'g_password local-test\n'), (13, 'reject', None),
@@ -101,6 +122,10 @@ def main():
                                 out, err = attempt.communicate(timeout=10)
                                 log.write(out + err)
                                 result |= attempt.returncode
+                        elif label == 'rcon-reject':
+                            fixture = subprocess.run(['docker', 'exec', name, '/runtime/rcon_reject'], capture_output=True, timeout=10)
+                            result = fixture.returncode
+                            log.write(fixture.stdout + fixture.stderr)
                         elif label == 'legacy':
                             fixture = subprocess.run(['docker', 'exec', name, '/runtime/handshake', '', '127.0.0.2', '7'], capture_output=True, timeout=10)
                             result = fixture.returncode
