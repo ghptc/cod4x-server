@@ -1,0 +1,29 @@
+name: cod4-homolog
+services:
+  homolog:
+    image: "${COD4X_RUNTIME_IMAGE:?Set the locally built immutable image ID or version tag}"
+    pull_policy: never
+    container_name: cod4-homolog
+    restart: "no"
+    read_only: true
+    stdin_open: true
+    command: ["+set", "dedicated", "2", "+set", "net_port", "28960", "+set", "fs_basepath", "/home/user/cod4", "+set", "fs_homepath", "/home/user/.callofduty4", "+set", "fs_game", "mods/pml220", "+set", "fs_localizedHeadersPath", "/opt/integrity", "+set", "com_zoneMegs", "64", "+set", "sv_maxclients", "12", "+set", "sv_pure", "1", "+set", "sv_promod_admin", "1", "+exec", "server.cfg", "+map", "mp_crash"]
+    ports:
+      - "28962:28960/udp"
+    volumes:
+      - "${COD4X_ASSETS:?Set authorized private asset directory}/main:/home/user/cod4/main:ro"
+      - "${COD4X_ASSETS:?Set authorized private asset directory}/zone:/home/user/cod4/zone:ro"
+      - "${COD4X_PRIVATE_RUNTIME:?Set the prepared private runtime}/mods:/home/user/cod4/mods:ro"
+      - "${COD4X_PRIVATE_RUNTIME:?Set the prepared private runtime}/integrity:/opt/integrity:ro"
+      - "${COD4X_HOMOLOG_HOME:?Set separate homologation home}:/home/user/.callofduty4"
+      - "${COD4X_SERVER_CONFIG:?Set separate private homologation server.cfg}:/home/user/.callofduty4/main/server.cfg:ro"
+    tmpfs:
+      - /tmp:rw,nosuid,size=64m
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -1,0 +1,11 @@
+# Build only from a local context containing the verified ELF32 binary/notices.
+FROM alexandercurl/cod4x-server@sha256:7050ddb6927fdf0b6703d605f23ebcf2bfb14553c1db01173ec0035294995770
+ARG COD4X_REVISION
+LABEL org.opencontainers.image.source="https://github.com/ghptc/cod4x-server"
+LABEL org.opencontainers.image.revision="${COD4X_REVISION}"
+COPY --chown=user:user --chmod=0555 cod4x18_dedrun /home/user/cod4/cod4x18_dedrun
+COPY Copyright.md License.md copying.md /usr/share/doc/cod4x/
+USER user
+WORKDIR /home/user/cod4
+ENTRYPOINT ["/home/user/cod4/cod4x18_dedrun"]
+CMD ["+exec", "server.cfg", "+map", "mp_crash"]
