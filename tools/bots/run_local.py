@@ -127,6 +127,21 @@ def main():
                     at, label, command = schedule.pop(0)
                     proc.stdin.write(('echo BOT_CHECKPOINT ' + label + '\n').encode())
                     if command is not None:
+                        if a.scenario == 'controls' and label in ['add', 'easy']:
+                            # An empty S&D round can end between scheduled commands.
+                            # Wait for real script readiness, never force/bypass it.
+                            deadline = time.monotonic() + 6
+                            ready = False
+                            while time.monotonic() < deadline:
+                                offset = prefix.with_suffix('.console.log').stat().st_size
+                                proc.stdin.write(b'bot_status\n'); proc.stdin.flush()
+                                time.sleep(0.25)
+                                fresh = prefix.with_suffix('.console.log').read_bytes()[offset:]
+                                if re.search(rb'BOT_STATUS .*ready=1 pure=1', fresh):
+                                    ready = True
+                                    break
+                            if not ready:
+                                raise RuntimeError('AI did not become ready for manual bot addition')
                         proc.stdin.write(command.encode())
                         result = 0
                     else:
