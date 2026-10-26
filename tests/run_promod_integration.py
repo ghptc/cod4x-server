@@ -166,6 +166,18 @@ for attempt in range(2):
         send('runtime_fixture 3 vote yes'); time.sleep(.1)
         send('runtime_fixture 1 vote yes'); time.sleep(4)
         checks['human_vote_passes'] = f'"{target}"' in rcon('g_votedMapName')
+        cooldown = int(re.search(r'"g_voteCooldown" is: "(\d+)', rcon('g_voteCooldown'))[1])
+        if time.monotonic() - vote_called_at < cooldown - .25:
+            send('runtime_fixture 2 callvote ' + target); time.sleep(.1)
+            event = (home / 'console-0.log').read_text(errors='replace').split('RUNTIME_FIXTURE')[-1]
+            checks['live_cooldown_before_expiry'] = bool(re.search(r'slot=2 human=1 voteTime=0', event))
+        while time.monotonic() - vote_called_at < cooldown + .25:
+            time.sleep(min(1, cooldown + .25 - (time.monotonic() - vote_called_at)))
+        vote_called_at = time.monotonic()
+        send('runtime_fixture 2 callvote ' + target); time.sleep(.1)
+        event = (home / 'console-0.log').read_text(errors='replace').split('RUNTIME_FIXTURE')[-1]
+        checks['live_cooldown_after_expiry'] = bool(re.search(r'slot=2 human=1 voteTime=[1-9]\d*', event))
+        send('runtime_fixture 1 vote yes'); time.sleep(4)
         checks['vote_waits_match_end'] = snap('voted_before_end')['map'] == ready['map']
         send('runtime_fixture 0 bot\nruntime_fixture 1 bot\nruntime_fixture 2 bot')
         snap('short_match')
@@ -180,11 +192,13 @@ for attempt in range(2):
         send('bot_add 3'); time.sleep(8)
         send('bots_play_fire 0\nruntime_fixture 0 human')
         second_target = 'mp_backlot' if ended['map'] != 'mp_backlot' else 'mp_strike'
-        send('runtime_fixture 0 callvote ' + second_target); time.sleep(.2)
-        checks['cooldown_survives_map'] = '""' in rcon('g_votedMapName')
-        # Respect the actual canonical 120-second cooldown; never disable it.
-        while time.monotonic() - vote_called_at < 121:
-            time.sleep(min(5, 121 - (time.monotonic() - vote_called_at)))
+        cooldown = int(re.search(r'"g_voteCooldown" is: "(\d+)', rcon('g_voteCooldown'))[1])
+        if time.monotonic() - vote_called_at < cooldown - 1:
+            send('runtime_fixture 0 callvote ' + second_target); time.sleep(.2)
+            checks['cooldown_survives_map'] = '""' in rcon('g_votedMapName')
+        # Short mode cooldowns may expire during the completed-match transition.
+        while time.monotonic() - vote_called_at < cooldown + 1:
+            time.sleep(min(5, cooldown + 1 - (time.monotonic() - vote_called_at)))
         send('runtime_fixture 0 callvote ' + second_target); time.sleep(4)
         checks['one_human_vote_after_map'] = f'"{second_target}"' in rcon('g_votedMapName')
         send('runtime_fixture 0 bot')

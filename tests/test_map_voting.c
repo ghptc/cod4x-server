@@ -73,6 +73,15 @@ static void cast(int slot, const char *choice)
 }
 int main(void)
 {
+    const int seconds[] = {5, 30, 120};
+    for (unsigned i=0; i<sizeof(seconds)/sizeof(*seconds); ++i) {
+        setup(2,10); cooldown.integer=seconds[i]; call(0,"mp_crash");
+        assert(nextVoteTime == 1000u + 1000u * seconds[i]);
+        /* Finish the ballot; cooldown is measured from acceptance, not result. */
+        level.voteTime=0; level.voteExecuteTime=0;
+        svs.time=nextVoteTime-1; call(1,"mp_strike"); assert(!level.voteTime);
+        svs.time=nextVoteTime; call(1,"mp_strike"); assert(level.voteTime);
+    }
     setup(2,10); call(0,"mp_crash");
     assert(level.voteTime && level.voteYes==1 && level.numVotingClients==2);
     assert(!strcmp(level.voteString,"set g_votedMapName mp_crash\n"));
