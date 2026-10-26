@@ -983,7 +983,10 @@ static int Cvar_SetVariant( cvar_t *var, CvarValue value ,qboolean force ) {
 				Sys_LeaveCriticalSection(CRITSECT_CVAR);
 				return 0;
 			}
-			if(var->string && !Q_stricmp(var->string, value.string))
+			/* A later CFG can restore the current value while replacing a
+			 * different pending value. Do not leave the earlier latch active. */
+			if(var->string && !Q_stricmp(var->string, value.string) &&
+			   (!latched || (var->latchedString && !Q_stricmp(var->latchedString, value.string))))
 			{
 				Sys_LeaveCriticalSection(CRITSECT_CVAR);
 				return 0;
