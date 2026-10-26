@@ -657,6 +657,12 @@ void Sec_Update( qboolean getbasefiles ){
 	struct version_t newversion;
 	struct version_t currentversion;
 
+    // Registered before global configuration; only startup +set can disable it.
+    if(!Cvar_GetBool("sv_autoupdate")){
+        Com_Printf(CON_CHANNEL_SYSTEM,"Autoupdater: disabled by sv_autoupdate\n");
+        return;
+    }
+
     if(!Sec_Initialized()){
 		return;
     }
