@@ -144,3 +144,24 @@ must be recorded separately; original PoC success does not certify Auto-Fill.
 Rollback: start a previous verified executable without bot_enable, using the
 original three Promod artifacts and eight headers. No production changes are
 authorized here. No CI, image publishing, release or deployment is configured.
+
+## Gameplay corrections
+
+Prepared runtimes select from all four Promod weapon classes and validate primary
+and pistol choices against the active mode. Human class reservations and the
+class-availability display exclude bots; a zero class limit still disables that
+class. Selection is checked again before reserving a human slot.
+
+The companion Promod CFG sets `sv_randomMapRotation=1` and
+`promod_auto_maprotate=1`. The native shuffle supplies the initial map and avoids
+immediate automatic repeats. The prepared match-end overlay calls native
+`exitLevel` only after a completed match; normal S&D rounds still restart.
+Administrator map commands and PR #8's next-map vote keep their native paths.
+
+Run `python3 tests/run_map_rotation.py`, `python3 tests/run_map_voting.py`, and
+`python3 -m unittest discover -s tests -p 'test_*.py'`. For a **disposable** prepared
+runtime, `tests/run_gameplay.py --runtime PATH --game PATH --scenario controls`
+qualifies RCON removal, admitted-client preservation and all supported gun
+inventories; `--scenario rotation` exercises the actual Promod round/match-end
+routines and voted-map consumption. These fixtures do not certify graphical
+clients, Steam authentication or a full human-played match.
