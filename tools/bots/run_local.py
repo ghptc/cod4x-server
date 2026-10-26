@@ -49,7 +49,7 @@ def main():
            '--mount', f'type=bind,src={runtime},dst=/runtime',
            '--mount', f'type=bind,src={a.game / "main"},dst=/runtime/main,readonly',
            '--mount', f'type=bind,src={a.game / "zone"},dst=/runtime/zone,readonly', a.image,
-           '+set', 'dedicated', '1', '+set', 'net_ip', '127.0.0.1', '+set', 'net_port', '28971',
+           '+set', 'dedicated', '1', '+set', 'sv_autoupdate', '0', '+set', 'net_ip', '127.0.0.1', '+set', 'net_port', '28971',
            '+set', 'fs_basepath', '/runtime', '+set', 'fs_homepath', '/runtime/runs/' + name,
            '+set', 'fs_game', 'mods/pml220', '+set', 'fs_localizedHeadersPath', '/runtime/integrity',
            '+set', 'sv_maxclients', '12', '+set', 'sv_pure', '1', '+set', 'g_gametype', 'sd',
