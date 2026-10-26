@@ -558,6 +558,14 @@ void __cdecl Cmd_Vote_f(gentity_t *ent)
 {
   const char *msg;
 
+  msg = SV_Cmd_Argv(1);
+  if (SV_Cmd_Argc() != 2 ||
+      (Q_stricmp(msg, "yes") && Q_stricmp(msg, "y") && strcmp(msg, "1") &&
+       Q_stricmp(msg, "no") && Q_stricmp(msg, "n") && strcmp(msg, "0")))
+    return;
+  if (!G_VoteClientEligible(ent - g_entities))
+    return;
+
   if ( g_oldVoting->boolean )
   {
     if ( !level.voteTime )
@@ -581,7 +589,7 @@ void __cdecl Cmd_Vote_f(gentity_t *ent)
     ent->client->ps.eFlags |= 0x100000u;
   }
   msg = SV_Cmd_Argv(1);
-  if ( msg[0] != 'y' && msg[1] != 'Y' && msg[1] != '1' )
+  if (Q_stricmp(msg, "yes") && Q_stricmp(msg, "y") && strcmp(msg, "1"))
   {
     if ( g_oldVoting->boolean )
     {

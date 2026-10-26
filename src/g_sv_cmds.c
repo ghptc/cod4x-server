@@ -33,12 +33,15 @@
 #include "scr_vm.h"
 #include "misc.h"
 #include "cscr_stringlist.h"
+#include "g_vote_policy.h"
 
 
 #include <string.h>
 
 extern cvar_t *g_deadChat;
 static cvar_t *g_voteTime;
+static cvar_t *g_voteCooldown;
+static unsigned int nextVoteTime;
 static cvar_t *g_voteBanTime;
 cvar_t *g_votedMapName;
 cvar_t *g_votedGametype;
@@ -59,6 +62,7 @@ void Init_CallVote(void)
 
     g_votedMapName = Cvar_RegisterString("g_votedMapName", "", 0, "Contains the voted mapname");
     g_votedGametype = Cvar_RegisterString("g_votedGametype", "", 0, "Contains the voted gametype");
+    g_voteCooldown = Cvar_RegisterInt("g_voteCooldown", 120, 30, 900, 0, "Minimum seconds between accepted vote calls (server-wide)");
     g_voteTime = Cvar_RegisterInt("g_voteTime", 30, 10, 90, 0, "Duration a called vote is active");
     g_voteBanTime = Cvar_RegisterInt("g_voteBanTime", 15, 1, 240, 0, "Duration a player is banned after successful votekick");
     g_voteMaxVotes = Cvar_RegisterInt("g_voteMaxVotes", 2, 1, 10, 0, "How many votes a player can call");
@@ -69,7 +73,10 @@ void Init_CallVote(void)
     g_voteAllowGametype = Cvar_RegisterBool("g_voteAllowGametype", qtrue, 0, "Allow calling gametype votes");
     g_voteAllowMap = Cvar_RegisterInt("g_voteAllowMap", 1, 0, 2, 0, "Allow calling next map setting votes - 0=disabled, 1=only from rotation, 2=Any map");
     g_voteAllowRestart = Cvar_RegisterBool("g_voteAllowRestart", qtrue, 0, "Allow calling map restart votes");
+}
 
+static void UpdateVoteFlags(void)
+{
     g_voteFlags = 0;
     g_voteFlags |= g_voteAllowRestart->boolean ? VOTEFLAGS_RESTART : 0;
     g_voteFlags |= g_voteAllowGametype->boolean ? VOTEFLAGS_GAMETYPE : 0;
@@ -78,6 +85,25 @@ void Init_CallVote(void)
     g_voteFlags |= g_voteAllowKick->boolean ? VOTEFLAGS_KICK : 0;
     g_voteFlags |= g_voteAllowMap->integer ? VOTEFLAGS_MAP : 0;
     g_voteFlags |= g_voteAllowMap->integer == 2 ? VOTEFLAGS_ANYMAP : 0;
+}
+
+/* Use the same human electorate for calling, casting and the native majority. */
+qboolean G_VoteClientEligible(int slot)
+{
+    return slot >= 0 && slot < level.maxclients &&
+        svs.clients[slot].state == CS_ACTIVE &&
+        svs.clients[slot].netchan.remoteAddress.type != NA_BOT &&
+        level.clients[slot].sess.connected == CON_CONNECTED &&
+        level.clients[slot].sess.cs.team != TEAM_SPECTATOR;
+}
+
+void G_UpdateVotingClients(void)
+{
+    int i;
+    level.numVotingClients = 0;
+    for (i = 0; i < level.maxclients; ++i)
+        if (G_VoteClientEligible(i))
+            ++level.numVotingClients;
 }
 
 /*
@@ -95,14 +121,22 @@ void Cmd_CallVote_f(gentity_t *ent)
     int mask = 0;
     mvabuf;
 
-    if (!g_allowVote->boolean)
+    if (!G_VoteClientEligible(ent - g_entities))
+        return;
+    UpdateVoteFlags();
+    if (!g_oldVoting->boolean || !g_allowVote->boolean)
     {
         SV_GameSendServerCommand(ent - g_entities, 0, va("%c \"GAME_VOTINGNOTENABLED\"\0", 0x65));
         return;
     }
-    if (level.voteTime)
+    if (level.voteTime || level.voteExecuteTime)
     {
         SV_GameSendServerCommand(ent - g_entities, 0, va("%c \"GAME_VOTEALLREADYINPROGRESS\"\0", 0x65));
+        return;
+    }
+    if (nextVoteTime && (int)((unsigned int)svs.time - nextVoteTime) < 0)
+    {
+        SV_GameSendServerCommand(ent - g_entities, 0, "e \"Please wait before calling another vote\"");
         return;
     }
     if (ent->client->sess.voteCount >= g_voteMaxVotes->integer)
@@ -168,11 +202,15 @@ void Cmd_CallVote_f(gentity_t *ent)
         return;
     }
 
-    // if there is still a vote to be executed
-    if (level.voteExecuteTime)
+    if ((!Q_stricmp(arg1, "map") &&
+         (SV_Cmd_Argc() != 3 || !Vote_Identifier(arg2))) ||
+        (!Q_stricmp(arg1, "typemap") &&
+         (SV_Cmd_Argc() != 4 || !Vote_Identifier(arg2) || !Vote_Identifier(arg3))) ||
+        (!Q_stricmp(arg1, "g_gametype") &&
+         (SV_Cmd_Argc() != 3 || !Vote_Identifier(arg2))))
     {
-        level.voteExecuteTime = 0;
-        Cbuf_AddText(va("%s\n", level.voteString));
+        SV_GameSendServerCommand(ent - g_entities, 0, "e \"GAME_INVALIDVOTESTRING\"");
+        return;
     }
 
     // special case for g_gametype, check for bad values
@@ -201,7 +239,7 @@ void Cmd_CallVote_f(gentity_t *ent)
 
         if (!(g_voteFlags & VOTEFLAGS_ANYMAP))
         {
-            if (!strstr(SV_GetMapRotation(), va("map %s", arg3)))
+            if (!Vote_MapInRotation(SV_GetMapRotation(), arg3))
             {
                 SV_GameSendServerCommand(ent - g_entities, 0, va("%c \"Voting for map %s is disabled on this server\"\0", 0x65, arg3));
                 return;
@@ -247,7 +285,7 @@ void Cmd_CallVote_f(gentity_t *ent)
 
         if (!(g_voteFlags & VOTEFLAGS_ANYMAP))
         {
-            if (!strstr(SV_GetMapRotation(), va("map %s", arg2)))
+            if (!Vote_MapInRotation(SV_GetMapRotation(), arg2))
             {
                 SV_GameSendServerCommand(ent - g_entities, 0, va("%c \"This server does not allow voting for maps which aren't part of map-rotation\"\0", 0x65));
                 return;
@@ -340,6 +378,8 @@ void Cmd_CallVote_f(gentity_t *ent)
 
     SV_GameSendServerCommand(-1, 0, va("%c \"GAME_CALLEDAVOTE\x15%s\"\0", 0x65, ent->client->sess.newnetname));
     ent->client->sess.voteCount++;
+    nextVoteTime = svs.time + 1000u * g_voteCooldown->integer;
+    G_UpdateVotingClients();
 
     // start the voting, the caller autoamtically votes yes
     level.voteTime = level.time + 1000 * g_voteTime->integer;

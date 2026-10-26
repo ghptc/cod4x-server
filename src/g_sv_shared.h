@@ -32,6 +32,8 @@
 #include "server.h"
 
 void Init_CallVote(void);
+qboolean G_VoteClientEligible(int slot);
+void G_UpdateVotingClients(void);
 __cdecl void Cmd_CallVote_f( gentity_t *ent );
 void G_ChatRedirect(char* msg, int client, int mode);
 void G_AddChatRedirect(void (*rd_dest)( const char *, int, int));

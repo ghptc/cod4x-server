@@ -65,6 +65,14 @@ def punkbuster_policy(source):
     return source.replace(condition, condition[:-1] + '&&!getDvarInt("promod_allow_no_punkbuster"))')
 
 
+def map_vote_policy(source):
+    # Only the startup voting prohibition changes; match rules stay intact.
+    restriction = 'setDvar("g_allowVote",0);'
+    if source.count(restriction) != 1:
+        raise ValueError('Unexpected installed Promod voting restriction')
+    return source.replace(restriction, '')
+
+
 def omit_function(source, name):
     match = re.search(r'^' + name + r'\([^)]*\)\s*\{', source, re.M)
     if not match:
@@ -85,6 +93,8 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--allow-no-punkbuster', action='store_true',
                         help='Generate an opt-in PB-warning policy overlay; does not enable/disable PB')
+    parser.add_argument('--allow-map-voting', action='store_true',
+                        help='Let native g_allowVote configuration survive Promod competition setup')
     args = parser.parse_args()
     lock = json.loads((ROOT / 'bots/dependencies.json').read_text())
     for directory, files in [(args.promod, lock['promod']['files']),
@@ -146,6 +156,13 @@ def main():
     elif policy.exists():
         # Repreparing without the option restores the installed servercheck.
         policy.unlink()
+    vote_policy = mod / 'promod/comp.gsx'
+    if args.allow_map_voting:
+        script = map_vote_policy(rawfile(data, 'promod/comp.gsc'))
+        vote_policy.parent.mkdir(exist_ok=True)
+        vote_policy.write_text('// Private derived overlay; see docs/map-voting.md.\n' + script)
+    elif vote_policy.exists():
+        vote_policy.unlink()
     maps = []
     for match in re.finditer(rb'\xff{4}(.{4})\xff{4}(maps/mp/mp_[a-z0-9_]+\.gsc)\x00', data, re.S):
         length = struct.unpack('<I', match[1])[0]
@@ -163,6 +180,7 @@ def main():
         maps.append(output.stem)
     manifest = {'maps': maps, 'binary_sha256': digest(destination / 'cod4x18_dedrun'),
                 'punkbuster_warning_policy_overlay': args.allow_no_punkbuster,
+                'map_voting_policy_overlay': args.allow_map_voting,
                 'ai_source_sha256': digest(ROOT / 'bots/promod_ai.gsc'),
                 'dependency_lock_sha256': digest(ROOT / 'bots/dependencies.json'),
                 'promod': lock['promod']['files'], 'headers': lock['integrity_headers']}
