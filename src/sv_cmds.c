@@ -2373,6 +2373,50 @@ void SV_LoadMapFromBsp()
 
 void SV_DoHostMigration_f();
 
+/* Artifact selection/recreation belongs to the external operator, never GSC or
+ * a client-supplied command. Until that boundary is qualified, fail closed. */
+static void SV_ChangeMode_f(void)
+{
+    const char *mode;
+    int i;
+    char game[MAX_OSPATH];
+
+    /* Registration power can be changed by administrators; retain this floor
+     * in the handler as well as the existing authenticated command ingress. */
+    if (Cmd_GetInvokerPower() != 100)
+    {
+        Com_Printf(CON_CHANNEL_DONT_FILTER, "change_mode requires administrative power 100.\n");
+        return;
+    }
+    if (Cmd_Argc() == 1)
+    {
+        Cvar_VariableStringBuffer("fs_game", game, sizeof(game));
+        Com_Printf(CON_CHANNEL_DONT_FILTER, "Current fs_game: %s\nAvailable switch targets: none (qualified artifact controller unavailable).\n", *game ? game : "main");
+        return;
+    }
+    if (Cmd_Argc() != 2)
+    {
+        Com_Printf(CON_CHANNEL_DONT_FILTER, "Usage: change_mode [mode-id]\n");
+        return;
+    }
+    mode = Cmd_Argv(1);
+    if (mode[0] < 'a' || mode[0] > 'z' || strlen(mode) > 32)
+    {
+        Com_Printf(CON_CHANNEL_DONT_FILTER, "Invalid mode identifier.\n");
+        return;
+    }
+    for (i = 1; mode[i]; ++i)
+    {
+        if ((mode[i] < 'a' || mode[i] > 'z') &&
+            (mode[i] < '0' || mode[i] > '9') && mode[i] != '-')
+        {
+            Com_Printf(CON_CHANNEL_DONT_FILTER, "Invalid mode identifier.\n");
+            return;
+        }
+    }
+    Com_Printf(CON_CHANNEL_DONT_FILTER, "Mode %s unavailable: no qualified artifact controller. Runtime unchanged.\n", mode);
+}
+
 void SV_AddOperatorCommands()
 {
 	//static qboolean	initialized; // Not used?
@@ -2381,6 +2425,7 @@ void SV_AddOperatorCommands()
 	//Former safe commands
 	Cmd_AddPCommand ("systeminfo", SV_Systeminfo_f, 1);
 	Cmd_AddPCommand ("serverinfo", SV_Serverinfo_f, 1);
+	Cmd_AddPCommand ("change_mode", SV_ChangeMode_f, 100);
 	Cmd_AddPCommand ("map", SV_Map_f, 60);
 	Cmd_AddCommand ("map_rotate", SV_MapRotate_f);
 	Cmd_AddCommand ("writenvcfg", NV_WriteConfig);
