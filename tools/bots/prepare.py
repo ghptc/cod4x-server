@@ -103,19 +103,39 @@ def match_end_rotation(source):
 
 
 def bot_readyup(source):
-    # Keep the original human input/HUD/recording paths. Evaluate bot eligibility
-    # in the original Ready Up loop, including late joins and team changes.
-    source = replace_once(source, 'player thread selfLoop();',
-                          'if(!player.isbot)player thread selfLoop();')
-    return replace_once(source, 'player.oldready=player.update;',
-        'if(player.isbot){'
-        'player.ready=isDefined(player.pers["team"])&&'
-        '(player.pers["team"]=="allies"||player.pers["team"]=="axis")&&'
-        'isDefined(player.pers["class"]);'
-        'player.update=player.ready;'
-        'if(!player.ready){level.not_ready_count++;all_players_ready=false;}'
-        'continue;}'
-        'player.oldready=player.update;')
+    # Filter the original state machine, never substitute bot readiness for input.
+    # Rebuild from level.players each tick so disconnects cannot leave a quorum.
+    source = replace_once(source, 'previous_not_ready_count=0;',
+                          'previous_not_ready_count=0;level.readyup_humans=0;')
+    source = replace_once(source, 'level.not_ready_count=0;',
+                          'level.not_ready_count=0;level.readyup_humans=0;')
+    source = replace_once(source, 'if(!isDefined(player.looped)){',
+        'if(!player humanReadyEligible()){'
+        'if(!player.isbot&&isDefined(player.readyup_team))player setclientdvar("self_ready",0);'
+        'player.ready=false;player.update=false;player.readyup_team=undefined;'
+        'player.statusicon="";continue;}'
+        'level.readyup_humans++;'
+        'if(!isDefined(player.readyup_team)||player.readyup_team!=player.pers["team"]){'
+        'player.ready=false;player.update=false;'
+        'player setclientdvar("self_ready",0);player.statusicon="compassping_enemy";'
+        'player.readyup_team=player.pers["team"];}'
+        'if(!isDefined(player.looped)){')
+    source = replace_once(source, 'if(all_players_ready)level.ready_up_over=true;',
+        'if(all_players_ready&&level.readyup_humans>0)level.ready_up_over=true;')
+    # The last-player reminder also uses the human population, not bots/spectators.
+    if source.count('level.players.size>1') != 2:
+        raise ValueError('Unexpected installed Ready Up reminder guards')
+    source = source.replace('level.players.size>1', 'level.readyup_humans>1')
+    reminder = source_block(source, r'lastPlayerReady\(\)')
+    source = replace_once(source, reminder, replace_once(reminder,
+        'player=level.players[i];',
+        'player=level.players[i];if(!player humanReadyEligible())continue;'))
+    source = replace_once(source, 'if(self useButtonPressed())self.ready=!self.ready;',
+        'if(self humanReadyEligible()&&isDefined(self.readyup_team)&&'
+        'self.readyup_team==self.pers["team"]&&self useButtonPressed())self.ready=!self.ready;')
+    return source + ('\nhumanReadyEligible(){return isDefined(self)&&!self.isbot&&'
+        'isDefined(self.pers["team"])&&'
+        '(self.pers["team"]=="allies"||self.pers["team"]=="axis");}\n')
 
 
 def omit_function(source, name):
