@@ -488,6 +488,8 @@ static void Com_InitCvars( void ){
     com_sv_running = Cvar_RegisterBool("sv_running", qfalse, 64, "Server is running");
     com_securemodevar = Cvar_RegisterBool("securemode", qfalse, CVAR_INIT, "CoD4 runs in secure mode which restricts execution of external scripts/programs and loading of unauthorized shared libraries/plugins. This is recommended in a shared hosting environment");
     com_securemode = com_securemodevar->boolean;
+    Cvar_RegisterBool("sv_autoupdate", qtrue, CVAR_INIT,
+        "Allow server self-updates; disable at startup for externally managed installations");
 }
 
 
