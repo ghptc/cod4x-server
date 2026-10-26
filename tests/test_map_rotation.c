@@ -39,6 +39,10 @@ int main(void)
 {
     const char *list="gametype sd map mp_crash gametype sd map mp_strike gametype sd map mp_backlot";
     int seen=0;
+    setup(list, 0);
+    remaining.string="gametype sd map mp_obsolete";
+    SV_MapRotate_f();
+    assert(!strcmp(current.string,"mp_crash"));
     for(int n=0;n<12;++n) {
         setup(list,1);seed=n;SV_Map_f();
         assert(loads==1 && !restarts);
