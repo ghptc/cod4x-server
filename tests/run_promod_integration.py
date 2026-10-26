@@ -85,10 +85,10 @@ for attempt in range(2):
         deadline = time.monotonic() + 3
         while time.monotonic() < deadline:
             game = rcon('integration_snapshot')
-            found = list(re.finditer(r'PROMOD_RUNTIME ' + tag + r' map=(\w+) over=(\d+) bots=(\d+) bot_ready=(\d+) humans=(\d+) human_ready=(\d+) phase=(\w+) rounds=(-?\d+)', game))
+            found = list(re.finditer(r'PROMOD_RUNTIME ' + tag + r' map=(\w+) over=(\d+) bots=(\d+) bot_ready=(\d+) humans=(\d+) human_ready=(\d+) phase=(\w+) rounds=(-?\d+) eligible=(\d+) pending=(\d+) rdyup=(\d+)', game))
             if found:
                 values = found[-1].groups()
-                data = dict(zip(('map', 'over', 'bots', 'bot_ready', 'humans', 'human_ready', 'phase', 'rounds'), values))
+                data = dict(zip(('map', 'over', 'bots', 'bot_ready', 'humans', 'human_ready', 'phase', 'rounds', 'eligible', 'pending', 'rdyup'), values))
                 for key in data.keys() - {'map', 'phase'}: data[key] = int(data[key])
                 snapshots.append(dict(tag=tag, **data)); return data
             time.sleep(.05)
@@ -101,7 +101,7 @@ for attempt in range(2):
         checks[f'private_environment_{attempt}'] = 'http://127.0.0.1/local-fixture' in rcon('sv_wwwBaseURL')
         time.sleep(8)
         first = snap('startup' + str(attempt))
-        checks[f'bot_only_readyup_{attempt}'] = first['phase'] == 'playing' and first['bots'] == 12 and first['over'] == 0
+        checks[f'bot_only_readyup_{attempt}'] = first['rdyup'] == 1 and first['bots'] == 12 and first['over'] == 0 and first['bot_ready'] == 0
         if attempt == 1:
             send('bot_limit 0')
             maps = re.search(r'set sv_mapRotation "([^"]+)"',
@@ -138,11 +138,11 @@ for attempt in range(2):
         checks['human_blocks_readyup'] = held['humans'] == 1 and held['human_ready'] == 0 and held['over'] == 0
         send('bot_add 3'); time.sleep(2)
         mixed = snap('mixed_unready')
-        checks['bots_ready_human_unready'] = mixed['bot_ready'] == mixed['bots'] == 3 and mixed['over'] == 0
+        checks['bots_excluded_human_unready'] = mixed['bot_ready'] == 0 and mixed['bots'] == 3 and mixed['pending'] == 1 and mixed['over'] == 0
         snap('team_reset'); time.sleep(.2)
         checks['team_change_clears_ready'] = snap('team_cleared')['bot_ready'] == 0
         snap('team_restore'); time.sleep(.2)
-        checks['team_change_restores_eligibility'] = snap('team_restored')['bot_ready'] == 3
+        checks['bot_team_restore_still_excluded'] = snap('team_restored')['bot_ready'] == 0
         snap('recorded')
         send('runtime_fixture 0 use 1'); time.sleep(.3); send('runtime_fixture 0 use 0')
         time.sleep(.2)

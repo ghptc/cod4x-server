@@ -1,5 +1,9 @@
 # Promod runtime integration — 2026-10-26
 
+Ready Up behavior in this historical integration report is superseded by
+[human-only Ready Up](human-only-readyup.md). In particular, the bot auto-ready
+behavior and its historical accepted evidence below describe the prior policy.
+
 These changes are coordinated across engine, configuration catalog and local
 workspace consumer. No deployed environment was inspected or modified.
 
