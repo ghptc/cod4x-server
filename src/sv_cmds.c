@@ -1648,6 +1648,8 @@ static void SV_KillServer_f( void ) {
 }
 
 
+static void SV_MapRotate_f(void);
+
 static void SV_Map_f( void ) {
 
 	const char* map;
@@ -1658,7 +1660,15 @@ static void SV_Map_f( void ) {
 		return;
 	}
 
-	SV_Map(map);
+    /* Existing launchers pass +map <first rotation map>. Honor randomized
+       rotation on fresh startup too, without changing later admin map commands. */
+    if (!com_sv_running->boolean && sv_randomMapRotation->boolean &&
+        !Q_stricmp(Cmd_Argv(0), "map") && sv_mapRotation->string[0]) {
+        Cvar_SetString(sv_mapRotationCurrent, "");
+        SV_MapRotate_f();
+        return;
+    }
+    SV_Map(map);
 
 	// set the cheat value
 	// if the level was started with "map <levelname>", then
@@ -1696,15 +1706,16 @@ static void SV_MixMapsInRotation()
 		char* mapname;
 	} rotInfo[CVAR_STRING_SIZE / 8] = {{NULL, NULL}}; // Minimum possible correct rotation command: "map mp_z". Len = 8.
 
-	int rotationLen = strlen(sv_mapRotation->string) > CVAR_STRING_SIZE ? CVAR_STRING_SIZE : strlen(sv_mapRotation->string);
+	int rotationLen = strlen(sv_mapRotation->string) >= CVAR_STRING_SIZE ? CVAR_STRING_SIZE - 1 : strlen(sv_mapRotation->string);
 	Com_Memcpy(buffer, sv_mapRotation->string, rotationLen);
 
 	char* p = strtok(buffer, " ");
-	do
+	while (p && mapCount < CVAR_STRING_SIZE / 8)
 	{
 		if(!Q_stricmp(p, "gametype"))
 		{
 			p = strtok(NULL, " ");
+            if (!p) break;
 			rotInfo[mapCount].gametype = p;
 			lastGametype = p;
 			p = strtok(NULL, " ");
@@ -1712,16 +1723,17 @@ static void SV_MixMapsInRotation()
 		else
 			rotInfo[mapCount].gametype = lastGametype;
 
+        if (!p || Q_stricmp(p, "map")) break;
 		if(!Q_stricmp(p, "map"))
 		{
 			p = strtok(NULL, " ");
+            if (!p) break;
 			rotInfo[mapCount].mapname = p;
 		}
 
 		++mapCount;
 		p = strtok(NULL, " ");
 	}
-	while(p);
 
 	lastGametype = NULL;
 	for(i = mapCount; i > 0; --i) // Random here. i isn't in use. mapIndex iterations.
@@ -1754,6 +1766,25 @@ static void SV_MixMapsInRotation()
 	Com_Printf(CON_CHANNEL_DONT_FILTER,"Picked random map rotation:\n%s\n", mixedList);
 }
 
+static qboolean SV_RotationHasAlternative(const char *rotation, const char *current)
+{
+    const char *key, *value;
+    size_t keylen, len;
+    while (*rotation) {
+        rotation += strspn(rotation, " ");
+        key = rotation;
+        keylen = strcspn(rotation, " ");
+        rotation += keylen;
+        rotation += strspn(rotation, " ");
+        value = rotation;
+        len = strcspn(rotation, " ");
+        rotation += len;
+        if (keylen == 3 && !Q_stricmpn(key, "map", 3) && len &&
+            (strlen(current) != len || Q_stricmpn(value, current, len))) return qtrue;
+    }
+    return qfalse;
+}
+
 /*
 ================
 SV_MapRotate_f
@@ -1767,6 +1798,7 @@ static void SV_MapRotate_f( void ) {
     char map_rotationbuf[CVAR_STRING_SIZE];
 	char* maplist;
 	int len;
+    qboolean skippedCurrent = qfalse;
 
 	// DHM - Nerve :: Check for invalid gametype
 	Com_Printf(CON_CHANNEL_DONT_FILTER,"map_rotate...\n");
@@ -1797,7 +1829,7 @@ static void SV_MapRotate_f( void ) {
 
 	while(qtrue)
 	{
-		if(maplist == NULL)
+		if(maplist == NULL || !*maplist)
 			break;
 
 		if(!Q_stricmpn(maplist, "gametype ", 9)){
@@ -1835,6 +1867,11 @@ static void SV_MapRotate_f( void ) {
 
 			Cvar_SetString(sv_mapRotationCurrent, maplist); //Set the cvar with one map less
 
+            if (com_sv_running->boolean && !Q_stricmp(map, sv_mapname->string) &&
+                SV_RotationHasAlternative(sv_mapRotation->string, map)) {
+                skippedCurrent = qtrue;
+                continue;
+            }
 			if(!SV_Map(map)){ //Load the level
 				Com_PrintError(CON_CHANNEL_DONT_FILTER,"Invalid mapname at %s %s\nRestarting current map\n", map, maplist);
 				SV_MapRestart( qfalse );
@@ -1847,6 +1884,13 @@ static void SV_MapRotate_f( void ) {
 	}
 
 
+    if (skippedCurrent) {
+        /* The final remaining entry was the current (admin/voted) map.
+           Refill through the existing native shuffle and consume another. */
+        Cvar_SetString(sv_mapRotationCurrent, "");
+        SV_MapRotate_f();
+        return;
+    }
 	if(com_sv_running->boolean){
 		Com_PrintError(CON_CHANNEL_DONT_FILTER,"\"sv_mapRotation\" is broken at: %s.\nRestarting current map\n");
 		SV_MapRestart( qfalse );

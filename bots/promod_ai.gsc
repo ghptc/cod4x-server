@@ -161,7 +161,11 @@ attach()
     self maps\mp\gametypes\_promod::initClassLoadouts();
     if (self.pers["team"] != "allies" && self.pers["team"] != "axis")
         self maps\mp\gametypes\_globallogic::menuAutoAssign();
-    self maps\mp\gametypes\_promod::setClassChoice("assault");
+    if (!self choose_loadout())
+    {
+        bot_trace("PMBOT NO_ALLOWED_LOADOUT slot=" + self getentitynumber());
+        return;
+    }
     self maps\mp\gametypes\_promod::menuAcceptClass(undefined);
     wait 0.2;
     // Reconnect during round restart may have spawned before attachment.
@@ -180,6 +184,56 @@ attach()
         self thread maps\mp\bots\_bot_internal::spawned();
     }
     bot_trace("PMBOT CLASS slot=" + self getentitynumber() + " team=" + self.pers["team"] + " class=" + self.pers["class"]);
+}
+
+// Let Promod validate each candidate against the active mode before reserving it.
+allowed_weapons(class_type, loadout_type)
+{
+    if (loadout_type == "loadout_primary")
+        candidates = strtok("m16,ak47,m4,g3,g36c,m14,mp44,mp5,uzi,ak74u,winchester1200,m1014,m40a3,remington700", ",");
+    else
+        candidates = strtok("beretta,colt45,usp,deserteagle,deserteaglegold", ",");
+    allowed = [];
+    for (i = 0; i < candidates.size; i++)
+        if (maps\mp\gametypes\_promod::validClass(class_type, candidates[i], loadout_type) &&
+            self maps\mp\gametypes\_promod::verifyWeaponChoice(candidates[i], class_type))
+            allowed[allowed.size] = candidates[i];
+    return allowed;
+}
+
+choose_loadout()
+{
+    classes = strtok("assault,specops,demolitions,sniper", ",");
+    allowed_classes = [];
+    for (i = 0; i < classes.size; i++)
+    {
+        weapons = self allowed_weapons(classes[i], "loadout_primary");
+        if (weapons.size && self maps\mp\gametypes\_promod::verifyClassChoice(self.pers["team"], classes[i]))
+            allowed_classes[allowed_classes.size] = classes[i];
+    }
+    if (!allowed_classes.size)
+        return false;
+    class_type = allowed_classes[randomint(allowed_classes.size)];
+    self maps\mp\gametypes\_promod::setClassChoice(class_type);
+    primaries = self allowed_weapons(class_type, "loadout_primary");
+    secondaries = self allowed_weapons(class_type, "loadout_secondary");
+    self.pers[class_type]["loadout_primary"] = primaries[randomint(primaries.size)];
+    self.pers[class_type]["loadout_primary_attachment"] = "none";
+    if (!maps\mp\gametypes\_promod::validClass(class_type, "none", "loadout_primary_attachment") &&
+        self.pers[class_type]["loadout_primary"] != "mp44" &&
+        maps\mp\gametypes\_promod::validClass(class_type, "silencer", "loadout_primary_attachment"))
+        self.pers[class_type]["loadout_primary_attachment"] = "silencer";
+    self.pers[class_type]["loadout_secondary"] = "none";
+    if (secondaries.size)
+        self.pers[class_type]["loadout_secondary"] = secondaries[randomint(secondaries.size)];
+    self.pers[class_type]["loadout_secondary_attachment"] = "none";
+    if (!maps\mp\gametypes\_promod::validClass(class_type, "none", "loadout_secondary_attachment") &&
+        maps\mp\gametypes\_promod::validClass(class_type, "silencer", "loadout_secondary_attachment"))
+        self.pers[class_type]["loadout_secondary_attachment"] = "silencer";
+    bot_trace("PMBOT LOADOUT slot=" + self getentitynumber() + " class=" + class_type +
+        " primary=" + self.pers[class_type]["loadout_primary"] +
+        " secondary=" + self.pers[class_type]["loadout_secondary"]);
+    return true;
 }
 
 // Reuse the pinned seven Bot Warfare profiles without its stock gametype/admin callbacks.

@@ -73,6 +73,35 @@ def map_vote_policy(source):
     return source.replace(restriction, '')
 
 
+def replace_once(source, old, new):
+    if source.count(old) != 1:
+        raise ValueError('Unexpected installed Promod gameplay policy: ' + old)
+    return source.replace(old, new)
+
+
+def human_class_limits(source):
+    # Reservation and UI use the same current human choices, not stale spawn classes.
+    source = replace_once(source,
+        'if(isDefined(self.pers["class"])&&self.pers["class"]==classType)return true;',
+        'if(self.isbot)return getDvarInt("class_"+classType+"_limit")>0;')
+    source = replace_once(source,
+        'if(level.players[i].team==teamName&&isDefined(level.players[i].class)&&level.players[i].class==classType)',
+        'if(level.players[i]!=self&&!level.players[i].isbot&&isDefined(level.players[i].pers["team"])&&level.players[i].pers["team"]==teamName&&isDefined(level.players[i].pers["class"])&&level.players[i].pers["class"]==classType)')
+    for cls in ('assault', 'specops', 'demolitions', 'sniper'):
+        source = replace_once(source,
+            f'if(player.team==teamName&&isDefined(player.class)&&player.class=="{cls}")',
+            f'if(!player.isbot&&isDefined(player.pers["team"])&&player.pers["team"]==teamName&&isDefined(player.pers["class"])&&player.pers["class"]=="{cls}")')
+    return replace_once(source, 'idef=!isDefined(self.pers["class"]);',
+        'if(!self verifyClassChoice(self.pers["team"],classType))return;idef=!isDefined(self.pers["class"]);')
+
+
+def match_end_rotation(source):
+    # Only the terminal match restart changes; ordinary S&D round restarts remain.
+    return replace_once(source,
+        'if(isDefined(game["PROMOD_MATCH_MODE"])&&game["PROMOD_MATCH_MODE"]=="match"){map_restart(false);return;}exitLevel(false);',
+        'if(isDefined(game["PROMOD_MATCH_MODE"])&&game["PROMOD_MATCH_MODE"]=="match"&&!getDvarInt("promod_auto_maprotate")){map_restart(false);return;}exitLevel(false);')
+
+
 def omit_function(source, name):
     match = re.search(r'^' + name + r'\([^)]*\)\s*\{', source, re.M)
     if not match:
@@ -163,6 +192,12 @@ def main():
         vote_policy.write_text('// Private derived overlay; see docs/map-voting.md.\n' + script)
     elif vote_policy.exists():
         vote_policy.unlink()
+    for name, transform in [('maps/mp/gametypes/_promod', human_class_limits),
+                            ('maps/mp/gametypes/_globallogic', match_end_rotation)]:
+        output = mod / (name + '.gsx')
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text('// Private derived gameplay correction; original rules retained.\n' +
+                          transform(rawfile(data, name + '.gsc')))
     maps = []
     for match in re.finditer(rb'\xff{4}(.{4})\xff{4}(maps/mp/mp_[a-z0-9_]+\.gsc)\x00', data, re.S):
         length = struct.unpack('<I', match[1])[0]
@@ -181,6 +216,8 @@ def main():
     manifest = {'maps': maps, 'binary_sha256': digest(destination / 'cod4x18_dedrun'),
                 'punkbuster_warning_policy_overlay': args.allow_no_punkbuster,
                 'map_voting_policy_overlay': args.allow_map_voting,
+                'human_class_limits_overlay': True,
+                'match_end_rotation_overlay': True,
                 'ai_source_sha256': digest(ROOT / 'bots/promod_ai.gsc'),
                 'dependency_lock_sha256': digest(ROOT / 'bots/dependencies.json'),
                 'promod': lock['promod']['files'], 'headers': lock['integrity_headers']}
