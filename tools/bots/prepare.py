@@ -102,6 +102,22 @@ def match_end_rotation(source):
         'if(isDefined(game["PROMOD_MATCH_MODE"])&&game["PROMOD_MATCH_MODE"]=="match"&&!getDvarInt("promod_auto_maprotate")){map_restart(false);return;}exitLevel(false);')
 
 
+def bot_readyup(source):
+    # Keep the original human input/HUD/recording paths. Evaluate bot eligibility
+    # in the original Ready Up loop, including late joins and team changes.
+    source = replace_once(source, 'player thread selfLoop();',
+                          'if(!player.isbot)player thread selfLoop();')
+    return replace_once(source, 'player.oldready=player.update;',
+        'if(player.isbot){'
+        'player.ready=isDefined(player.pers["team"])&&'
+        '(player.pers["team"]=="allies"||player.pers["team"]=="axis")&&'
+        'isDefined(player.pers["class"]);'
+        'player.update=player.ready;'
+        'if(!player.ready){level.not_ready_count++;all_players_ready=false;}'
+        'continue;}'
+        'player.oldready=player.update;')
+
+
 def omit_function(source, name):
     match = re.search(r'^' + name + r'\([^)]*\)\s*\{', source, re.M)
     if not match:
@@ -193,7 +209,8 @@ def main():
     elif vote_policy.exists():
         vote_policy.unlink()
     for name, transform in [('maps/mp/gametypes/_promod', human_class_limits),
-                            ('maps/mp/gametypes/_globallogic', match_end_rotation)]:
+                            ('maps/mp/gametypes/_globallogic', match_end_rotation),
+                            ('promod/readyup', bot_readyup)]:
         output = mod / (name + '.gsx')
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text('// Private derived gameplay correction; original rules retained.\n' +
@@ -218,6 +235,7 @@ def main():
                 'map_voting_policy_overlay': args.allow_map_voting,
                 'human_class_limits_overlay': True,
                 'match_end_rotation_overlay': True,
+                'bot_readyup_overlay': True,
                 'ai_source_sha256': digest(ROOT / 'bots/promod_ai.gsc'),
                 'dependency_lock_sha256': digest(ROOT / 'bots/dependencies.json'),
                 'promod': lock['promod']['files'], 'headers': lock['integrity_headers']}

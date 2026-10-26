@@ -1800,6 +1800,12 @@ static void SV_MapRotate_f( void ) {
 	int len;
     qboolean skippedCurrent = qfalse;
 
+    /* Remaining entries belong to a running rotation, not private startup CFGs.
+       Always select the first map from the effective canonical rotation. */
+    if (!com_sv_running->boolean) {
+        Cvar_SetString(sv_mapRotationCurrent, "");
+    }
+
 	// DHM - Nerve :: Check for invalid gametype
 	Com_Printf(CON_CHANNEL_DONT_FILTER,"map_rotate...\n");
 	Com_Printf(CON_CHANNEL_DONT_FILTER,"\"sv_mapRotation\" is: \"%s\"\n\n", sv_mapRotation->string);
