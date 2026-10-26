@@ -186,6 +186,7 @@
 	extern g_allowVote
 	extern g_cheats
 	extern g_deadChat
+	extern G_UpdateVotingClients
 	extern g_oldVoting
 	extern g_gravity
 	extern g_motd
@@ -1712,6 +1713,7 @@ CheckVote:
 	push esi
 	push ebx
 	sub esp, 0x20
+	call G_UpdateVotingClients
 	mov eax, [level+0xb24]
 	test eax, eax
 	jz CheckVote_10

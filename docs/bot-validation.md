@@ -114,3 +114,9 @@ Evidence and exact private artifacts are preserved outside Git under
 `~/Projects/cod4x-gameplay-controls/20261025`. No EC2 access or deployment was
 performed for these changes. Graphical FPS/PB/human combat and voice tests
 remain separate pending qualifications.
+
+## Final gameplay backlog: player map voting
+
+Native next-map voting is implemented on the separate player-map-voting feature
+branch; see [inspection, commands, opt-in setup and acceptance limits](map-voting.md).
+Real-client Promod qualification and owner review remain before rollout.
