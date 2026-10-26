@@ -1,0 +1,29 @@
+{
+  "identification": "Before the Dawn Alpha 001, original June 2008 package",
+  "archive_sha256": "dad2e94a92823844ab411f3dfadd0f2dacc491b9df3416db8b1a1f9fb9f4d410",
+  "files": {
+    "btd_alpha_001/btd_admin.cfg": "57fe8485459c0f3e88e6758ebfa13e9909f778ec3059e4050223540594e49128",
+    "btd_alpha_001/btd_gametype.cfg": "27d4780e5753051226d91302eba0c4eec5d46380c25e4ed6bb051181a290c0fd",
+    "btd_alpha_001/btd_images.iwd": "6db51738edb6f38e48a2e72a7cdb3cb3ff08482c5578a5e944cdd2f4b03daef0",
+    "btd_alpha_001/btd_maprotation.cfg": "a1d0593101143cd5e26ac7b48e65b1ff3ec8f1a685a727e74f49c1018a85975b",
+    "btd_alpha_001/btd_messages.cfg": "3f3470124987e72d6215606a52d4e06f23e7d8ad090c679e061a02d97622a567",
+    "btd_alpha_001/btd_music.cfg": "a2f919aeb819ead5a4526f29456c620c8c3107d8163355cc124f0a55b9fb0b0c",
+    "btd_alpha_001/btd_music.iwd": "67f48b88d0cfec1e79287393afe8569313bf37bf2c7dcb9eed9a73e3103f5124",
+    "btd_alpha_001/btd_settings.cfg": "cafae7ea9459c4c6a2bcefd920f31f5c52d2c786106d631cd7866f229245c4b8",
+    "btd_alpha_001/btd_weaponcontrol.cfg": "7d47109a2dd93af1cfa6eb718e0f731ea2c2b9c5d2fa7eda7f9a4bea742fb775",
+    "btd_alpha_001/btd_weapons.iwd": "b98a1c765d655063cfd60a776887d09a6fcc25572dcaf5a4f74eaf7c26e167fa",
+    "btd_alpha_001/btd_zoom.cfg": "cc9ed344481fb0a0bb3570eedcf271ff5bdb4236cafffb86e9d4648d53867aea",
+    "btd_alpha_001/mod.ff": "50911fdd0273b50e26983723619881acfaed4aa65f4d91a799a341464c2224a6",
+    "btd_alpha_001/server.cfg": "9559175471030d4e93f00905c5de7a260c940d9127fa11b34532b02e9e6fbe7c",
+    "readme.txt": "c1bbeab2c0c37eb56b94343646de640d08fdc054ff70dde68b9139e501a36a8f"
+  },
+  "default_cfgs": [
+    "btd_weaponcontrol.cfg",
+    "btd_gametype.cfg",
+    "btd_settings.cfg",
+    "btd_zoom.cfg",
+    "btd_messages.cfg",
+    "btd_music.cfg"
+  ],
+  "note": "Private inputs only; no redistribution grant established. Preserve readme and do not decompile mod.ff."
+}

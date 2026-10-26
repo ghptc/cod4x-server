@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Verify and copy private original BTD assets; never decompile or rebuild them."""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import re
+import shutil
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def digest(path):
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f'Missing or symlinked input: {path}')
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def prepare(source, headers, binary, output):
+    lock = json.loads((ROOT / 'tools/btd/dependencies.json').read_text())
+    header_lock = json.loads((ROOT / 'bots/dependencies.json').read_text())['integrity_headers']
+    for base, expected in ((source, lock['files']), (headers, header_lock)):
+        for name, value in expected.items():
+            path = base / name
+            if any(parent.is_symlink() for parent in path.parents if parent != base.parent):
+                raise ValueError(f'Symlinked input path: {path}')
+            if digest(path) != value:
+                raise ValueError(f'Input hash mismatch: {name}')
+    binary_hash = digest(binary)
+    if output.exists():
+        raise ValueError('Output must be a new directory; existing runtimes are never overwritten')
+    destination = output.resolve()
+    for path in (source, headers, binary):
+        if destination == path.resolve() or destination.is_relative_to(path.resolve()) or path.resolve().is_relative_to(destination):
+            raise ValueError('Output must be separate from inputs')
+    output.mkdir(parents=True)
+    (output / '.bot-test-runtime').touch()
+    mod = output / 'mods/btd_alpha_001'
+    mod.mkdir(parents=True)
+    # Keep original CFGs private, excluding the unsafe sample server/passwords.
+    for name in lock['files']:
+        if name.startswith('btd_alpha_001/') and Path(name).name != 'server.cfg':
+            shutil.copy2(source / name, mod / Path(name).name)
+    notices = output / 'licenses'
+    notices.mkdir()
+    shutil.copy2(source / 'readme.txt', notices / 'Before-the-Dawn-readme.txt')
+    target_headers = output / 'integrity/addiwdheaders'
+    target_headers.mkdir(parents=True)
+    for name in header_lock:
+        shutil.copy2(headers / name, target_headers / name)
+    shutil.copy2(binary, output / 'cod4x18_dedrun')
+    (output / 'cod4x18_dedrun').chmod(0o755)
+    rotation = (source / 'btd_alpha_001/btd_maprotation.cfg').read_text()
+    record = {'asset_type': 'btd-alpha-001', 'fs_game': 'mods/btd_alpha_001',
+              'maps': re.findall(r'\bmap (mp_[a-z0-9_]+)', rotation),
+              'binary_sha256': binary_hash, 'headers': header_lock,
+              'assets': {Path(k).name: v for k, v in lock['files'].items()
+                         if k.startswith('btd_alpha_001/') and Path(k).name != 'server.cfg'},
+              'default_cfgs': lock['default_cfgs'],
+              'dependency_lock_sha256': digest(ROOT / 'tools/btd/dependencies.json'),
+              'qualification': 'original package map list; gameplay qualification is separate'}
+    (output / 'inputs.json').write_text(json.dumps(record, indent=2) + '\n')
+    return record
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ('source', 'headers', 'binary', 'output'):
+        parser.add_argument('--' + name, required=True, type=Path)
+    args = parser.parse_args()
+    try:
+        record = prepare(args.source, args.headers, args.binary, args.output)
+    except (OSError, ValueError) as exc:
+        parser.exit(1, f'BTD preparation failed: {exc}\n')
+    print(json.dumps({'runtime': str(args.output), 'maps': record['maps']}, indent=2))
