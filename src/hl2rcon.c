@@ -265,7 +265,7 @@ qboolean HL2Rcon_SourceRconAuth(netadr_t *from, msg_t *msg, rconUser_t* user){
 
 badrcon:
 	Cmd_EndTokenizedString();
-	Com_Printf(CON_CHANNEL_DONT_FILTER,"Bad rcon from %s using password %s\n", NET_AdrToString (from), loginstring);
+	Com_Printf(CON_CHANNEL_DONT_FILTER,"Bad rcon from %s\n", NET_AdrToString (from));
 	//Don't allow another attempt for 20 seconds
 
 	SV_PlayerAddBanByip(from, "You are banned from this server for a bad rcon attempt", Com_GetRealtime() + 20);
