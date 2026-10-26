@@ -32,6 +32,7 @@
 #include "server.h"
 
 void Init_CallVote(void);
+qboolean G_AdminSuicide(gentity_t *ent);
 qboolean G_VoteClientEligible(int slot);
 void G_UpdateVotingClients(void);
 __cdecl void Cmd_CallVote_f( gentity_t *ent );

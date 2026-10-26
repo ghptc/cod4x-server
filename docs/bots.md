@@ -47,6 +47,10 @@ are granted by Bot Warfare.
 - `bot_status`: enabled flag, fill state, humans, connecting humans, bots, AI
   readiness, pure, bot limit and difficulty. Default command power: 20.
 - `bot_kickall`: pause first, then remove every bot. Default power: 80.
+- `bot_killall`: kill living active bots through normal script suicide handling;
+  keep connections and Auto-Fill state. Default power: 80. Reports `Killed N bots`.
+  Dead/spectating bots are skipped. Promod controls S&D round completion and
+  subsequent spawning; this command does not force a respawn or credit humans.
 - `bot_autofill 0`: pause without removing current bots. Default power: 80.
 - `bot_autofill 1`: explicitly enable/reactivate filling. Default power: 80.
 
