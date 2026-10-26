@@ -33,6 +33,7 @@ If you have questions concerning this license or the applicable additional terms
 #include "g_sv_shared.h"
 #include "scr_vm.h"
 #include "sv_snapshot.h"
+#include "bg_public.h"
 
 /*
 ==================
@@ -496,6 +497,26 @@ void Cmd_Kill_f( gentity_t *ent ) {
 	ent->health = 0;
         ent->client->ps.stats[0] = 0;
         player_die(ent, ent, ent, 100000, 13, 0, 0, HITLOC_NONE, 0);
+}
+
+/* Administrative death uses the script suicide path (MOD_SUICIDE = 12).
+ * Promod owns scoring, round completion and respawning through player_die.
+ * Never credit a human attacker or bypass the normal death callback. */
+qboolean G_AdminSuicide(gentity_t *ent)
+{
+    struct bgs_s *previous_bgs;
+    if (!ent || !ent->client || ent->client->sess.sessionState != SESS_STATE_PLAYING ||
+        ent->health <= 0 || ent->client->ps.stats[0] <= 0)
+        return qfalse;
+    ent->flags &= ~3;
+    ent->health = 0;
+    ent->client->ps.stats[0] = 0;
+    /* Console/RCON commands run outside ClientThink's animation context. */
+    previous_bgs = bgs;
+    bgs = &level_bgs;
+    player_die(ent, ent, ent, 100000, 12, 0, NULL, HITLOC_NONE, 0);
+    bgs = previous_bgs;
+    return qtrue;
 }
 
 

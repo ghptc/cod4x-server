@@ -5,6 +5,7 @@
 #include "qcommon.h"
 #include "qcommon_io.h"
 #include "sv_bot_policy.h"
+#include "g_sv_shared.h"
 
 static cvar_t *bot_enable, *bot_ai_ready, *bot_fill_limit, *bot_skill;
 static bot_fill_state_t fill_state = BOT_FILL_ACTIVE;
@@ -71,6 +72,21 @@ static void BotKickAll(void)
     fill_state = BotFill_Pause(BotHumanCount(NULL));
     if (BotCount()) SV_RemoveAllBots();
     Com_Printf(CON_CHANNEL_SERVER, "Bots removed; Auto-Fill paused.\n");
+}
+
+static void BotKillAll(void)
+{
+    int i, killed = 0;
+    if (Cmd_Argc() != 1) { Com_Printf(CON_CHANNEL_SERVER, "Usage: bot_killall\n"); return; }
+    if (com_sv_running && com_sv_running->integer && sv_maxclients &&
+        sv.state == SS_GAME && !sv.restarting) {
+        for (i = 0; i < sv_maxclients->integer; ++i) {
+            client_t *cl = &svs.clients[i];
+            if (cl->state == CS_ACTIVE && cl->netchan.remoteAddress.type == NA_BOT)
+                killed += G_AdminSuicide(cl->gentity);
+        }
+    }
+    Com_Printf(CON_CHANNEL_SERVER, "Killed %d bots\n", killed);
 }
 
 static qboolean BotCountArgument(int *count)
@@ -165,6 +181,7 @@ void SV_BotManagerInit(void)
     bot_skill = Cvar_RegisterInt("bot_skill", -1, -1, 7, 0, "Bot skill: -1 original fixed profile, 0 mixed, 1..7 Bot Warfare tiers");
     Cvar_RegisterBool("bot_debug", qfalse, 0, "Write bot gameplay evidence to the game log");
     Cmd_AddPCommand("bot_kickall", BotKickAll, 80);
+    Cmd_AddPCommand("bot_killall", BotKillAll, 80);
     Cmd_AddPCommand("bot_autofill", BotAutoFill, 80);
     Cmd_AddPCommand("bot_status", BotStatus, 20);
     Cmd_AddPCommand("bot_add", BotAdd, 80);
