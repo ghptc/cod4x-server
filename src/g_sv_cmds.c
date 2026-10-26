@@ -62,7 +62,7 @@ void Init_CallVote(void)
 
     g_votedMapName = Cvar_RegisterString("g_votedMapName", "", 0, "Contains the voted mapname");
     g_votedGametype = Cvar_RegisterString("g_votedGametype", "", 0, "Contains the voted gametype");
-    g_voteCooldown = Cvar_RegisterInt("g_voteCooldown", 120, 30, 900, 0, "Minimum seconds between accepted vote calls (server-wide)");
+    g_voteCooldown = Cvar_RegisterInt("g_voteCooldown", 120, 1, 900, 0, "Minimum seconds between accepted vote calls (server-wide)");
     g_voteTime = Cvar_RegisterInt("g_voteTime", 30, 10, 90, 0, "Duration a called vote is active");
     g_voteBanTime = Cvar_RegisterInt("g_voteBanTime", 15, 1, 240, 0, "Duration a player is banned after successful votekick");
     g_voteMaxVotes = Cvar_RegisterInt("g_voteMaxVotes", 2, 1, 10, 0, "How many votes a player can call");
