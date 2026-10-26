@@ -38,10 +38,8 @@ jobs:
         python3 -m unittest discover -s tests -p 'test_*.py'
         gcc -Wall -Wextra -Werror tests/test_bot_policy.c -o /tmp/bot-policy
         /tmp/bot-policy
-        for test in map_rotation map_voting; do
-          gcc -m32 -std=gnu11 -fno-pie -no-pie -ffunction-sections -fdata-sections -Wl,--gc-sections tests/test_$test.c -o /tmp/$test
-          /tmp/$test
-        done
+        python3 tests/run_map_rotation.py
+        python3 tests/run_map_voting.py
 
   windows:
     name: Windows
