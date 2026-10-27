@@ -62,7 +62,9 @@ class BtdPreparation(unittest.TestCase):
 
     def test_original_assets_not_modified_or_decompiled(self):
         record = self.prepare()
-        self.assertEqual(record['maps'], ['mp_crash'])
+        self.assertEqual(record['maps'], ['mp_crash', 'mp_killhouse'])
+        self.assertEqual((self.output / 'mods/btd_alpha_001/btd_maprotation.cfg').read_bytes(),
+                         (self.source / 'btd_alpha_001/btd_maprotation.cfg').read_bytes())
         self.assertEqual(record['asset_type'], 'btd-alpha-001')
         self.assertEqual((self.output / 'mods/btd_alpha_001/mod.ff').read_bytes(), self.fastfile)
         self.assertFalse((self.output / 'mods/btd_alpha_001/server.cfg').exists())
@@ -124,6 +126,15 @@ class BtdPreparation(unittest.TestCase):
                          hashlib.sha256(expected).hexdigest())
         self.assertEqual(record['navigation_source_sha256'], hashlib.sha256(self.navigation_raw).hexdigest())
         self.assertEqual(len(record['overlays']), 3)
+
+    def test_unpinned_navigation_blocks_map_declaration(self):
+        lock_path = self.root / 'tools/btd/dependencies.json'
+        lock = json.loads(lock_path.read_text())
+        lock['navigation_source_sha256'] = '0' * 64
+        lock_path.write_text(json.dumps(lock))
+        with self.assertRaisesRegex(ValueError, 'source hash mismatch'):
+            self.prepare()
+        self.assertFalse(self.output.exists())
 
     def test_unpinned_navigation_rejected(self):
         with self.assertRaisesRegex(ValueError, 'source hash mismatch'):
