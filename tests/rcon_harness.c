@@ -27,6 +27,11 @@ int cvar_modifiedFlags;
 static struct { netadr_t redirectAddress; } svs;
 static struct { int rconBucket; } querylimit;
 static int executed, ban_seconds, source_id;
+qboolean SV_RconModeFraming(const byte *wire, int length);
+static qboolean SV_RconModeIngress(const char *raw,int power,const netadr_t *peer,qboolean framing) {
+ (void)peer; assert(power==100); if(strncmp(raw,"change_mode",11)) return qfalse;
+ strcpy(response,framing?"INGRESS_ALLOWED":"INGRESS_INVALID"); return qtrue;
+}
 static void Cmd_TokenizeStringInternal(const char *, qboolean, cmdTokenizeParams_t *);
 static int Cvar_SetVariant(cvar_t *, CvarValue, qboolean);
 static void Com_Printf(int channel, const char *fmt, ...) {
@@ -41,6 +46,7 @@ static void Com_Printf(int channel, const char *fmt, ...) {
 static void Sys_EnterCriticalSection(int n) { (void)n; }
 static void Sys_LeaveCriticalSection(int n) { (void)n; }
 int Q_stricmp(const char *a, const char *b) { return strcasecmp(a,b); }
+int Q_stricmpn(const char *a,const char *b,int n) { return strncasecmp(a,b,n); }
 static void FreeString(const char *s) { free((void *)s); }
 static char *CopyString(const char *s) { return strdup(s); }
 void Q_strncpyz(char *d, const char *s, int n) { snprintf(d,n,"%s",s); }
@@ -75,7 +81,11 @@ static void Cmd_ExecuteSingleCommand(int a,int b,const char *s) {
     (void)a;(void)b; executed=1; snprintf(response,sizeof(response),"EXECUTED:%s",s);
 }
 static int SV_PlayerBannedByip(netadr_t *a,char *b,int n) { (void)a;(void)b;(void)n;return 0; }
-static int Auth_Authorize(const char *u,const char *p) { (void)u;(void)p;return -1; }
-static uint64_t Auth_GetSteamID(const char *u) { (void)u;return 0; }
+typedef struct { uint64_t steamid; char username[32]; } authData_admin_t;
+static int auth_handle=-1, identity_lookups;
+static authData_admin_t authorized_record={42,"76561198000000999"};
+static int Auth_Authorize(const char *u,const char *p) { (void)u;(void)p;return auth_handle; }
+static authData_admin_t *Auth_GetAdminFromIndex(int index) { return index==0?&authorized_record:NULL; }
+static uint64_t Auth_GetSteamID(const char *u) { (void)u;identity_lookups++;return 999; }
 static int Com_GetRealtime(void) { return 1000; }
 static void SV_PlayerAddBanByip(netadr_t *a,const char *r,int until) { (void)a;(void)r;ban_seconds=until-1000; }

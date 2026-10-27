@@ -54,6 +54,7 @@
 #include "xac_helper.h"
 #include "db_load.h"
 #include "sec_crypto.h"
+#include "sv_mode_bridge.h"
 
 #include <string.h>
 #include <stdarg.h>
@@ -1530,9 +1531,15 @@ __optimize3 __regparm2 static void SVC_RemoteCommand( netadr_t *from, msg_t *msg
     while(cmd_aux[0] == ' ')//Skipping space after the password
         cmd_aux++;
 
-    Com_Printf (CON_CHANNEL_SERVER,"Rcon from %s: %s\n", NET_AdrToString (from), cmd_aux );
+    Com_Printf (CON_CHANNEL_SERVER,"Rcon from %s: %s\n", NET_AdrToString (from),
+        SV_RconModeCommand(cmd_aux) ? "change_mode request (arguments omitted)" : cmd_aux );
 
     Com_BeginRedirect (sv_outputbuf, SV_OUTPUTBUF_LENGTH, SV_FlushRedirect);
+    if (SV_RconModeIngress(cmd_aux, 100, from,
+            SV_RconModeFraming(msg->data + 8, msg->cursize - 8))) {
+        Com_EndRedirect();
+        return;
+    }
 #ifdef PUNKBUSTER
     if(!Q_stricmpn(cmd_aux, "pb_sv_", 6)){
 
@@ -4107,6 +4114,7 @@ SV_PreFrame
 */
 void SV_PreFrame()
 {
+  SV_ModeBridgeFrame();
   SV_BotManagerFrame();
   SV_UpdateBots();
   if ( cvar_modifiedFlags & 0x404 )

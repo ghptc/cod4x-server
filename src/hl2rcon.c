@@ -35,6 +35,7 @@
 #include "g_sv_shared.h"
 #include "sv_auth.h"
 #include "q_platform.h"
+#include "sv_mode_bridge.h"
 #include "sapi.h"
 
 #include <stdint.h>
@@ -193,6 +194,8 @@ qboolean HL2Rcon_SourceRconAuth(netadr_t *from, msg_t *msg, rconUser_t* user){
 	char buf[MAX_STRING_CHARS];
 	char stringlinebuf[MAX_STRING_CHARS];
 	uint64_t steamid;
+	int authorized_index;
+	authData_admin_t *authorized;
 
 	//packetlen =
 	MSG_ReadLong(msg);
@@ -233,15 +236,19 @@ qboolean HL2Rcon_SourceRconAuth(netadr_t *from, msg_t *msg, rconUser_t* user){
 			goto badrcon;
 		}
 
-		if(Auth_Authorize(username, password) < 0)
+		authorized_index = Auth_Authorize(username, password);
+		authorized = authorized_index < 0 ? NULL : Auth_GetAdminFromIndex(authorized_index);
+		if(!authorized || authorized->steamid == 0)
 		{
 			goto badrcon;
 		}
+		/* Bind identity to the verified record, never parse a login as a handle. */
+		steamid = authorized->steamid;
+		username = authorized->username;
 
 		Com_Printf(CON_CHANNEL_DONT_FILTER,"Rcon login from: %s Name: %s\n", NET_AdrToString (from), username);
 
 		Cmd_EndTokenizedString();
-		steamid = Auth_GetSteamID(username);
 	}else{
 		steamid = 0;
 		username = "console";
@@ -490,7 +497,7 @@ void HL2Rcon_ExecuteConsoleCommand(const char* command, uint64_t steamid)
 		while ( command[i] != ' ' && command[i] != '\0' && command[i] != '\n' && i < 32 ){
 			i++;
 		}
-		if(i > 29 || i < 3) return;
+		if(i > 29 || i < 3) goto cleanup;
 
 		Q_strncpyz(cmd,command,i+1);
 
@@ -502,7 +509,7 @@ void HL2Rcon_ExecuteConsoleCommand(const char* command, uint64_t steamid)
 		// start redirecting all print outputs to the packet
 
 		powercmd = Cmd_GetPower(cmd);
-		if(powercmd > power)
+		if(powercmd < 0 || powercmd > power)
 		{
 			Com_Printf(CON_CHANNEL_DONT_FILTER,"Insufficient permissions! Power: %d Needed: %d\n", power, powercmd);
 		}else{
@@ -519,6 +526,7 @@ void HL2Rcon_ExecuteConsoleCommand(const char* command, uint64_t steamid)
 		}
 	}
 
+cleanup:
 	Com_EndRedirect();
 	Cmd_SetCurrentInvokerInfo(oldpower, oldinvokerclnum, oldinvokersteamid, oldinvokername);
 
@@ -529,6 +537,7 @@ void HL2Rcon_ExecuteConsoleCommand(const char* command, uint64_t steamid)
 int HL2Rcon_SourceRconEvent(netadr_t *from, msg_t *msg, int connectionId){
 
     int packettype;
+    int packetstart, packetlen, commandstart;
     int type;
     int8_t team;
     int8_t clientnum;
@@ -560,8 +569,8 @@ int HL2Rcon_SourceRconEvent(netadr_t *from, msg_t *msg, int connectionId){
 
     while(msg->readcount < msg->cursize)
     {
-	//packetlen =
-	MSG_ReadLong(msg);
+	packetstart = msg->readcount;
+	packetlen = MSG_ReadLong(msg);
 
 	user->lastpacketid = MSG_ReadLong(msg);
 
@@ -592,19 +601,32 @@ int HL2Rcon_SourceRconEvent(netadr_t *from, msg_t *msg, int connectionId){
 
 		case SERVERDATA_EXECCOMMAND:
 
+		    commandstart = msg->readcount;
 		    command = MSG_ReadString(msg, stringbuf, sizeof(stringbuf));
 
 		    //Pop the end of body byte
 		    MSG_ReadByte(msg);
 
-		    Com_Printf(CON_CHANNEL_DONT_FILTER,"Rcon from: %s command: %s\n", NET_AdrToString(from), command);
+		    Com_Printf(CON_CHANNEL_DONT_FILTER,"Rcon from: %s command: %s\n", NET_AdrToString(from),
+                SV_RconModeCommand(command) ? "change_mode request (arguments omitted)" : command);
 
 		    sourceRcon.redirectUser = connectionId+1;
 		    sourceRcon.writeerror = 0;
 
 		    if(user->steamid != 0 || strcmp(user->rconUsername, "console") == 0)
 		    {
-			HL2Rcon_ExecuteConsoleCommand(command, user->steamid);
+                int power = user->steamid ? Auth_GetClPowerBySteamID(user->steamid) : 100;
+                Com_BeginRedirect(sv_outputbuf, sizeof(sv_outputbuf), HL2Rcon_SourceRconFlushRedirect);
+                if (SV_RconModeIngress(command, power, NULL,
+                        packetlen >= 10 && packetlen <= msg->cursize-packetstart-4 &&
+                        msg->readcount == packetstart+4+packetlen &&
+                        msg->data[msg->readcount-1] == 0 &&
+                        SV_RconModeFraming(msg->data+commandstart, msg->readcount-commandstart-1))) {
+                    Com_EndRedirect();
+                } else {
+                    Com_EndRedirect();
+                    HL2Rcon_ExecuteConsoleCommand(command, user->steamid);
+                }
 		    }
 		    sourceRcon.redirectUser = 0;
 		    if(sourceRcon.writeerror)

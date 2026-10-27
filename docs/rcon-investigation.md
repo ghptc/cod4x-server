@@ -1,5 +1,9 @@
 # Traditional UDP RCON compatibility investigation
 
+Current authenticated mode-bridge implementation and its disabled activation
+gate are documented in [rcon-mode-bridge.md](rcon-mode-bridge.md). The historical
+investigations below retain their original evidence and scope.
+
 Investigation date: 2026-10-26. Server baseline:
 `9e3ce3e17532574bbe25e24cbff0174df94c802d`.
 No real credential was read or used. No remote runtime was contacted or changed.
