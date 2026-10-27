@@ -38,49 +38,70 @@ char* htmlq3colors[] = { "#000000", "#FF0000", "#00FF00", "#FFFF00",
 						"#7B8FB0", "#A69169" };
 
 
+/* Append untrusted text, never markup, without truncating long console output. */
+static void Webadmin_AppendText(xml_t *xmlobj, const char *text)
+{
+	char plain[65], escaped[512];
+	int length;
+	while (*text)
+	{
+		if (*text == '\n' || *text == '\r' || *text == '\t')
+		{
+			plain[0] = *text++; plain[1] = '\0';
+			XA(plain);
+			continue;
+		}
+		for (length = 0; length < sizeof(plain) - 1 && text[length] &&
+		    text[length] != '\n' && text[length] != '\r' && text[length] != '\t'; ++length)
+			plain[length] = text[length];
+		plain[length] = '\0';
+		XML_Escape(escaped, sizeof(escaped), plain);
+		XA(escaped);
+		text += length;
+	}
+}
+
 char* Webadmin_ConvertToHTMLColor(char* qcolorstr, char* hcolorstr, int maxlen)
 {
-
-	int colorindex, len, i, y;
-	char htmlcolor[128];
-	qboolean incolor;
-
-	incolor = qfalse;
-
-	for(i = 0, y = 0; qcolorstr[i] && y < maxlen; ++i)
+	int i = 0, used = 0, length, reserve;
+	qboolean incolor = qfalse;
+	const char *token;
+	char span[64], single[2];
+	if (maxlen < 1) return hcolorstr;
+	hcolorstr[0] = '\0';
+	while (qcolorstr[i])
 	{
-		if (qcolorstr[i] == '^' && qcolorstr[i+1] <= '9' && qcolorstr[i+1] >= '0')
+		if (qcolorstr[i] == '^' && qcolorstr[i+1] >= '0' && qcolorstr[i+1] <= '9')
 		{
-			if(incolor)
-			{
-				Q_strncpyz(hcolorstr +y, "</span>", maxlen -y);
-				y += 7;
-			}
-			colorindex = qcolorstr[i+1] - '0';
-			len = Com_sprintf(htmlcolor, sizeof(htmlcolor), "<span style=\"color: %s\">", htmlq3colors[colorindex]);
-			Q_strncpyz(&hcolorstr[y], htmlcolor, maxlen -y);
+			Com_sprintf(span, sizeof(span), "%s<span style=\"color: %s\">",
+			    incolor ? "</span>" : "", htmlq3colors[qcolorstr[i+1] - '0']);
+			token = span;
+			length = strlen(token);
+			if (length + 7 >= maxlen - used) break;
 			incolor = qtrue;
-			y += len;
-			i += 1;
-		}else{
-			hcolorstr[y] = qcolorstr[i];
-			++y;
+			i += 2;
 		}
-
-
+		else
+		{
+			switch (qcolorstr[i])
+			{
+				case '<': token = "&lt;"; break;
+				case '>': token = "&gt;"; break;
+				case '&': token = "&amp;"; break;
+				case '\"': token = "&quot;"; break;
+				case '\'': token = "&#39;"; break;
+				default: single[0] = qcolorstr[i]; single[1] = '\0'; token = single; break;
+			}
+			length = strlen(token);
+			reserve = incolor ? 7 : 0;
+			if (length + reserve >= maxlen - used) break;
+			++i;
+		}
+		memcpy(hcolorstr + used, token, length);
+		used += length;
 	}
-	if(incolor)
-	{
-		Q_strncpyz(hcolorstr +y, "</span>", maxlen -y);
-		y += 7;
-	}
-
-	if(y < maxlen)
-	{
-		hcolorstr[y] = '\0';
-	}else {
-		hcolorstr[maxlen - 1] = '\0';
-	}
+	if (incolor) { memcpy(hcolorstr + used, "</span>", 7); used += 7; }
+	hcolorstr[used] = '\0';
 	return hcolorstr;
 }
 
@@ -248,7 +269,7 @@ void Webadmin_BuildServerStatus(xml_t* xmlobj, qboolean showfullguid)
 			Q_strncpyz(teamallies, g_TeamName_Allies->string, sizeof(teamallies));
 
 		XO("tr"); XO1("td", "colspan", "6");
-		XA(teamaxis);
+		Webadmin_AppendText(xmlobj, teamaxis);
 		XC; XC;
 			for (cl = svs.clients, gclient = level.clients, i = 0; i < sv_maxclients->integer; i++, cl++, gclient++)
 			{
@@ -290,7 +311,7 @@ void Webadmin_BuildServerStatus(xml_t* xmlobj, qboolean showfullguid)
 			}
 
 		XO("tr"); XO1("td", "colspan", "6");
-		XA(teamallies);
+		Webadmin_AppendText(xmlobj, teamallies);
 		XC; XC;
 		for (cl = svs.clients, gclient = level.clients, i = 0; i < sv_maxclients->integer; i++, cl++, gclient++)
 		{
@@ -524,7 +545,7 @@ void Webadmin_FlushRedirect(char *outputbuf, qboolean lastcommand )
 	}
 
 	XA("<pre>");
-	XA(outputbuf);
+	Webadmin_AppendText(xmlobj, outputbuf);
 	XA("</pre>");
 
 }
@@ -641,7 +662,7 @@ void Webadmin_BuildMessage(msg_t* msg, authData_admin_t* authenticated, qboolean
 					XO("h3");
 						XA(Webadmin_ConvertToHTMLColor(sv_hostname->string, colorbuf, sizeof(colorbuf)));
 						XA(" ");
-						XA(sv_mapname->string);
+						Webadmin_AppendText(xmlobj, sv_mapname->string);
 					XC;
 				XC;
 
@@ -660,7 +681,7 @@ void Webadmin_BuildMessage(msg_t* msg, authData_admin_t* authenticated, qboolean
 						}else {
 								XO1("div","class","loginusername");
 									XO1("span","class","label label-primary");
-										XA("Logged in as: ");XA(username);XA(". &nbsp;");
+										XA("Logged in as: ");Webadmin_AppendText(xmlobj, username);XA(". &nbsp;");
 										XO2("a","href","/webadmin/?action=logout","style","color: #fff");
 											XA("Log Out");
 										XC;

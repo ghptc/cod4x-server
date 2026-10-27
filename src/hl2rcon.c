@@ -608,7 +608,7 @@ int HL2Rcon_SourceRconEvent(netadr_t *from, msg_t *msg, int connectionId){
 		    MSG_ReadByte(msg);
 
 		    Com_Printf(CON_CHANNEL_DONT_FILTER,"Rcon from: %s command: %s\n", NET_AdrToString(from),
-                SV_RconModeCommand(command) ? "change_mode request (arguments omitted)" : command);
+                SV_RconModeCommand(command) ? "change_mode request (arguments omitted)" : "remote command (arguments omitted)");
 
 		    sourceRcon.redirectUser = connectionId+1;
 		    sourceRcon.writeerror = 0;
