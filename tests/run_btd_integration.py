@@ -44,6 +44,8 @@ password = secrets.token_hex(16)
 (mod / 'private.cfg').write_text(f'set rcon_password "{password}"\nexec obsolete.cfg\n')
 (mod / 'obsolete.cfg').write_text('set g_gametype "sd"\nset bot_enable "1"\nset btd_grace_time "900"\n'
     'set btd_anticamp "3"\nset btd_msg2 "obsolete administrator fixture"\n')
+vote_policy = dict(re.findall(r'^set (g_(?:allowVote|oldVoting|vote\w+)) "([^"\n]*)"$',
+                             (args.catalog / 'modes/zombies/server.cfg').read_text(), re.M))
 checks = {}
 for attempt in range(2):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as channel:
@@ -74,6 +76,7 @@ for attempt in range(2):
         state = {name: value(name) for name in ('g_gametype', 'bot_enable', 'btd_grace_time', 'sv_pure')}
         print('startup', attempt, state, flush=True)
         checks[f'{attempt}_precedence'] = state == {'g_gametype': 'war', 'bot_enable': '0', 'btd_grace_time': '60', 'sv_pure': '1'}
+        checks[f'{attempt}_vote_policy'] = all(value(k) == v for k, v in vote_policy.items())
         checks[f'{attempt}_classic_policy'] = value('btd_anticamp') == '0' and value('btd_msg2') == 'Server admins are pitta'
         checks[f'{attempt}_bad_password'] = 'Bad rcon' in rcon('change_mode zombies', 'invalid-fixture')
         checks[f'{attempt}_status'] = fs_game in rcon('change_mode') and 'targets: none' in rcon('change_mode')
@@ -91,6 +94,7 @@ for attempt in range(2):
             state = {name: value(name) for name in ('mapname', 'g_gametype', 'sv_pure')}
             print('map', state, flush=True)
             checks[f'{attempt}_{mapname}'] = state == {'mapname': mapname, 'g_gametype': 'war', 'sv_pure': '1'}
+            checks[f'{attempt}_{mapname}_vote_policy'] = all(value(k) == v for k, v in vote_policy.items())
             checks[f'{attempt}_{mapname}_classic_policy'] = value('btd_anticamp') == '0' and value('btd_msg2') == 'Server admins are pitta'
         checks[f'{attempt}_credentials_after_maps'] = bool(re.search(r'map\s*:', rcon('status')))
         marker = home / 'persistent' / 'qualification-marker'

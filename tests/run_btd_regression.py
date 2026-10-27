@@ -20,12 +20,17 @@ for name in ('runtime', 'game', 'binary'):
     p.add_argument('--' + name, required=True, type=Path)
 p.add_argument('--fixed', action='store_true')
 p.add_argument('--reproduce-spawn-defect', action='store_true', help='Apply death guard only, expect the native missing-angle failure')
-p.add_argument('--scenario', choices=('expression', 'death', 'lifecycle', 'classic'), required=True)
+p.add_argument('--scenario', choices=('expression', 'death', 'lifecycle', 'classic', 'allies'), required=True)
+p.add_argument('--map', default='mp_crash', choices=('mp_crash', 'mp_killhouse'))
+p.add_argument('--expect-waypoint-defect', action='store_true',
+               help='Require the known Killhouse vendor waypoint parser failure')
 p.add_argument('--classic-control', choices=('timer', 'teleport'),
                help='Negative control: restore one original anti-camping mechanism')
 a = p.parse_args()
 if a.classic_control and (a.scenario != 'classic' or not a.fixed):
     p.error('--classic-control requires --fixed --scenario classic')
+if a.expect_waypoint_defect and (a.map != 'mp_killhouse' or not a.fixed):
+    p.error('--expect-waypoint-defect requires --map mp_killhouse --fixed')
 assert (a.runtime / '.bot-test-runtime').is_file()
 spec = importlib.util.spec_from_file_location('btd', ROOT / 'tools/btd/prepare.py')
 btd = importlib.util.module_from_spec(spec); spec.loader.exec_module(btd)
@@ -54,7 +59,7 @@ fixture = (ROOT / 'tests/btd_regression.gsc').read_text()
 condition = btd.SAFE_DEATH_CONDITION if a.fixed else btd.DEATH_CONDITION
 fixture = fixture.replace('BTD_TEST_CONDITION', condition.replace('eInflictor', 'fixture'))
 (mod / 'btd_regression.gsc').write_text(fixture)
-if a.scenario == 'lifecycle':
+if a.scenario in ('lifecycle', 'allies'):
     with (mod/'canonical-mode.cfg').open('a') as cfg:
         cfg.write('\nset btd_grace_time "10"\nset btd_wave_settings "2"\nset btd_start_zoms "5"\n')
 if a.scenario == 'classic':
@@ -69,7 +74,7 @@ cmd = [str(home / 'cod4x18_dedrun'), '+set', 'dedicated', '1', '+set', 'net_ip',
        '+set', 'fs_game', 'mods/btd_alpha_001', '+set', 'sv_autoupdate', '0', '+set', 'developer', '1', '+set', 'developer_script', '1',
        '+set', 'fs_localizedHeadersPath', str(home/'integrity'), '+set', 'sv_maxclients', '12',
        '+set', 'btd_test_scenario', a.scenario, '+exec', 'canonical-shared.cfg',
-       '+exec', 'canonical-mode.cfg', '+map', 'mp_crash']
+       '+exec', 'canonical-mode.cfg', '+map', a.map]
 logpath = home/'console.log'
 network_checks = {}
 def status():
@@ -97,14 +102,14 @@ def admit(attempt):
 with logpath.open('w') as log:
     proc = subprocess.Popen(cmd, cwd=home, stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT)
     try:
-        until = time.monotonic() + (130 if a.scenario == 'lifecycle' else 35)
+        until = time.monotonic() + (130 if a.scenario in ('lifecycle', 'allies') else 35)
         while time.monotonic() < until and proc.poll() is None:
             time.sleep(.25)
             text = re.sub(r'\^[0-9]', '', logpath.read_text(errors='replace'))
             if 'script runtime error' in text or 'script compile error' in text: break
-            proc.stdin.write(b'btd_test_result\nbtd_test_respawn\nbtd_test_zombie_spawn\nbtd_test_wave\n'); proc.stdin.flush()
-            success = {'expression': 'expression_pass', 'death': 'death_callback_survived', 'lifecycle': 'lifecycle_pass', 'classic': 'classic_pass'}[a.scenario]
-            if '"'+success+'"' in text or re.search(r'"(?:spawn|respawn|zombie_spawn|wave)_failed"|"classic_[a-z_]+(?:failed|enabled)"', text): break
+            proc.stdin.write(b'btd_test_result\nbtd_test_respawn\nbtd_test_zombie_spawn\nbtd_test_wave\nbtd_test_ally_bullet_damage\nbtd_test_ally_attacked\n'); proc.stdin.flush()
+            success = {'expression': 'expression_pass', 'death': 'death_callback_survived', 'lifecycle': 'lifecycle_pass', 'classic': 'classic_pass', 'allies': 'allies_pass'}[a.scenario]
+            if '"'+success+'"' in text or re.search(r'"(?:spawn|respawn|zombie_spawn|wave|ally_combat|ally_attack|ally_target_lost)_failed"|"classic_[a-z_]+(?:failed|enabled)"', text): break
         if a.scenario == 'lifecycle' and '"lifecycle_pass"' in text and not a.reproduce_spawn_defect:
             time.sleep(2)
             for attempt in range(2):
@@ -123,7 +128,7 @@ with logpath.open('w') as log:
         except subprocess.TimeoutExpired: proc.kill(); proc.wait()
 text = re.sub(r'\^[0-9]', '', logpath.read_text(errors='replace'))
 error = bool(re.search(r'script (?:runtime|compile) error', text))
-result = {'evidence': str(home), 'scenario': a.scenario, 'fixed': a.fixed,
+result = {'evidence': str(home), 'scenario': a.scenario, 'map': a.map, 'fixed': a.fixed,
           'runtime_error': error, 'gameplay_qualified': False, 'network_checks': network_checks,
           'expression_pass': '"expression_pass"' in text,
           'death_callback_survived': '"death_callback_survived"' in text,
@@ -134,11 +139,18 @@ result = {'evidence': str(home), 'scenario': a.scenario, 'fixed': a.fixed,
           'classic_pass': '"classic_pass"' in text,
           'classic_control': a.classic_control,
           'classic_control_detected': bool(a.classic_control and '"classic_'+a.classic_control+'_enabled"' in text),
-          'lifecycle_pass': '"lifecycle_pass"' in text}
+          'lifecycle_pass': '"lifecycle_pass"' in text,
+          'allies_pass': '"allies_pass"' in text,
+          'ally_bullet_damage': '"btd_test_ally_bullet_damage" is: "passed"' in text,
+          'ally_attacked': '"btd_test_ally_attacked" is: "passed"' in text,
+          'waypoint_defect': error and 'cannot cast undefined to string' in text and
+              "file 'svr/pezbot.gsc', line 1928" in text and 'LoadStaticWaypoints();' in text}
 (home/'results.json').write_text(json.dumps(result, indent=2)+'\n')
 print(json.dumps(result, indent=2))
-expected = result[{'expression':'expression_pass','death':'death_callback_survived','lifecycle':'lifecycle_pass','classic':'classic_pass'}[a.scenario]]
-if a.classic_control:
+expected = result[{'expression':'expression_pass','death':'death_callback_survived','lifecycle':'lifecycle_pass','classic':'classic_pass','allies':'allies_pass'}[a.scenario]]
+if a.expect_waypoint_defect:
+    assert result['waypoint_defect'], 'Known waypoint defect not reproduced: '+str(home)
+elif a.classic_control:
     assert not error and result['classic_control_detected'], 'Negative control not detected: '+str(home)
 elif a.reproduce_spawn_defect:
     assert error and 'type undefined is not a vector' in text, 'Spawn defect not reproduced: '+str(home)

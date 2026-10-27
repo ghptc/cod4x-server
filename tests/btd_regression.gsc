@@ -33,6 +33,11 @@ main()
         player classic();
         return;
     }
+    if (getdvar("btd_test_scenario") == "allies")
+    {
+        player ally_combat();
+        return;
+    }
     wait 1;
     player suicide();
     wait 2;
@@ -126,4 +131,90 @@ classic()
         return;
     }
     setdvar("btd_test_result", "classic_pass");
+}
+
+// Minimal compatibility gate: native input must damage an actual vendor zombie.
+// No synthetic damage notifications or weapon grants; a fixture-only observer
+// delegates to the unchanged vendor damage callback.
+ally_combat()
+{
+    self endon("disconnect");
+    level endon("game_ended");
+    self.maxhealth = 100000;
+    self.health = 100000;
+    self.btd_test_ally = true;
+    level.btd_test_damage_callback = level.callbackPlayerDamage;
+    level.callbackPlayerDamage = ::observe_player_damage;
+    zombies = [];
+    for (i = 0; i < 1000; i++)
+    {
+        zombies = getentarray("zom", "targetname");
+        if (zombies.size > 0 && isdefined(zombies[0].health)) break;
+        wait 0.05;
+    }
+    if (!zombies.size) { setdvar("btd_test_result", "zombie_spawn_failed"); return; }
+    target = zombies[0];
+    // Put the observer in the same open spawn cluster; navigation is a later gate.
+    self setorigin(target.origin + (100, 0, 0));
+    self botstop();
+    weapon = self getcurrentweapon();
+    self botweapon(weapon);
+    target thread observe_zombie_damage(self);
+    setdvar("btd_test_ally_weapon", weapon);
+    for (i = 0; i < 100; i++)
+    {
+        if (getdvar("btd_test_ally_bullet_damage") == "passed")
+        {
+            self botstop();
+            for (j = 0; j < 300; j++)
+            {
+                if (getdvar("btd_test_ally_attacked") == "passed")
+                {
+                    setdvar("btd_test_result", "allies_pass");
+                    return;
+                }
+                wait 0.1;
+            }
+            setdvar("btd_test_result", "ally_attack_failed");
+            return;
+        }
+        if (!isdefined(target))
+        {
+            self botstop();
+            setdvar("btd_test_result", "ally_target_lost_failed");
+            return;
+        }
+        self botlookat(target.origin + (0, 0, 35), 0.1);
+        self botaction("+fire");
+        wait 0.1;
+    }
+    self botstop();
+    setdvar("btd_test_result", "ally_combat_failed");
+}
+
+observe_zombie_damage(ally)
+{
+    for (;;)
+    {
+        self waittill("damage", amount, attacker, direction, point, means);
+        if (isdefined(attacker) && attacker == ally && amount > 0 &&
+            (means == "MOD_RIFLE_BULLET" || means == "MOD_PISTOL_BULLET"))
+        {
+            setdvar("btd_test_ally_bullet_damage", "passed");
+            return;
+        }
+    }
+}
+
+// Fixture-only observer delegates to the exact vendor callback, then records
+// actual health loss from a zombie inflictor. Falling cannot satisfy this gate.
+observe_player_damage(inflictor, attacker, amount, flags, means, weapon, point, direction, hitloc, offset)
+{
+    before = self.health;
+    self [[level.btd_test_damage_callback]](inflictor, attacker, amount, flags,
+        means, weapon, point, direction, hitloc, offset);
+    if (isdefined(self.btd_test_ally) && self.health < before &&
+        isdefined(inflictor) && isdefined(inflictor.targetname) &&
+        inflictor.targetname == "zom" && means == "MOD_MELEE")
+        setdvar("btd_test_ally_attacked", "passed");
 }

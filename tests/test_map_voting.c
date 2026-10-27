@@ -13,7 +13,7 @@ gentity_t g_entities[MAX_GENTITIES];
 static gclient_t clients[MAX_CLIENTS];
 cvar_t *g_allowVote, *g_oldVoting, *sv_serverid, *g_voteAbstainWeight;
 scr_const_t scr_const;
-static cvar_t enabled, disabled, rotationOnly, maxVotes, duration, cooldown, abstain;
+static cvar_t enabled, disabled, rotationOnly, maxVotes, duration, cooldown, abstain, votedMap, votedType;
 static int argc, executed;
 static const char *argv[6];
 static char command[1024];
@@ -44,6 +44,8 @@ static void setup(int humans, int bots)
     level.maxclients=humans+bots;
     level.time=svs.time=1000;
     nextVoteTime=0;
+    votedMap.string=votedType.string="";
+    g_votedMapName=&votedMap; g_votedGametype=&votedType;
     enabled.integer=1; disabled.integer=0; rotationOnly.integer=1;
     maxVotes.integer=10; duration.integer=30; cooldown.integer=120;
     abstain.value=1.0f;
@@ -73,6 +75,26 @@ static void cast(int slot, const char *choice)
 }
 int main(void)
 {
+    /* Zombies uses the same handlers/UI with a war rotation and five allies. */
+    const char *promod_rotation = rotation;
+    rotation = "gametype war map mp_crash gametype war map mp_strike";
+    setup(2,5); cooldown.integer=5; call(0,"mp_killhouse");
+    assert(!level.voteTime && !nextVoteTime);
+    call(0,"mp_crash"); cast(1,"yes"); CheckVote();
+    assert(level.voteExecuteTime && level.numVotingClients==2);
+    level.time=level.voteExecuteTime+1; CheckVote();
+    assert(executed==1 && !strcmp(command,"set g_votedMapName mp_crash\n"));
+    setup(2,5); g_voteAllowMaprotate=&enabled;
+    argc=2; argv[0]="callvote"; argv[1]="map_rotate";
+    Cmd_CallVote_f(&g_entities[2]); assert(!level.voteTime); /* ally */
+    Cmd_CallVote_f(&g_entities[0]); assert(level.voteTime);
+    assert(!strcmp(level.voteString,"map_rotate\n"));
+    cast(2,"yes"); assert(level.voteYes==1);
+    cast(1,"yes"); CheckVote(); assert(level.voteExecuteTime && !executed);
+    level.time=level.voteExecuteTime+1; CheckVote();
+    assert(executed==1 && !strcmp(command,"map_rotate\n"));
+    CheckVote(); assert(executed==1); /* transition is scheduled once */
+    rotation = promod_rotation;
     const int seconds[] = {5, 30, 120};
     for (unsigned i=0; i<sizeof(seconds)/sizeof(*seconds); ++i) {
         setup(2,10); cooldown.integer=seconds[i]; call(0,"mp_crash");
