@@ -25,7 +25,8 @@
     "btd_messages.cfg",
     "btd_music.cfg"
   ],
-  "note": "Private inputs only; preserve original package bytes. Generate only the pinned plaintext-source death guard overlay locally; do not decompile bytecode or redistribute original/derived scripts.",
+  "note": "Private verified inputs only. Generate pinned plaintext death, spawn-angle and map-specific Killhouse terminator overlays locally. No decompilation or redistribution of original/derived scripts.",
   "death_callback_source_sha256": "b6ca82d2d1f8dcd0c454d5e193f54ce1c1147619d547cba4472bbe00bfa60861",
-  "spawn_points_source_sha256": "b351917eb399ffbd3e4a93551d0bb8e62954414ea6b1659ff3b4d83becdc7408"
+  "spawn_points_source_sha256": "b351917eb399ffbd3e4a93551d0bb8e62954414ea6b1659ff3b4d83becdc7408",
+  "navigation_source_sha256": "ebe235fd9a6f5879c1aacb7b79e1ff87fb99d617ca8dd347737e5e88abc91f09"
 }
