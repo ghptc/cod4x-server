@@ -58,7 +58,10 @@ void SV_SSFilename( int number, const char* basename, char *fileName ) {
 
 char FilenameCharValidate(char k)
 {
-    if(k <= ' ' || k == 0xff || k == '.' || k == '/' || k == '\\' || k == ':' || k == '*' || k == '?' || k == '\"' || k == '<' || k == '>' || k == '|')
+    /* Player-controlled basenames also reach the optional shell hook. Keep
+     * only portable literal filename bytes; quoting does not stop $()/backticks. */
+    if(!((k >= 'a' && k <= 'z') || (k >= 'A' && k <= 'Z') ||
+         (k >= '0' && k <= '9') || k == '_' || k == '-'))
     {
         return '_';
     }
