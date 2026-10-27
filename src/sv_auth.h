@@ -69,6 +69,7 @@ qboolean Auth_InfoAddAdmin(const char* line);
 void Auth_WriteAdminConfig(char* buffer, int size);
 
 const char* Auth_FindSessionID(const char* sessionid);
+authData_admin_t* Auth_FindSessionAdmin(const char* sessionid);
 const char* Auth_GetSessionId(const char* username, const char *password);
 void Auth_ApplyUndercoverStatus(client_t* cl);
 void Auth_StoreUndercoverStatus(client_t* cl);

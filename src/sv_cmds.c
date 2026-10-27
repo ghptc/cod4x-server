@@ -2373,8 +2373,8 @@ void SV_LoadMapFromBsp()
 
 void SV_DoHostMigration_f();
 
-/* Artifact selection/recreation belongs to the external operator, never GSC or
- * a client-supplied command. Until that boundary is qualified, fail closed. */
+/* Generic console/GSC execution remains a nonmutating preflight. Only the
+ * authenticated raw RCON ingress may submit to the qualified host controller. */
 static void SV_ChangeMode_f(void)
 {
     const char *mode;

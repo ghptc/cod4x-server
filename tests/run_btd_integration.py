@@ -77,8 +77,10 @@ for attempt in range(2):
         checks[f'{attempt}_classic_policy'] = value('btd_anticamp') == '0' and value('btd_msg2') == 'Server admins are pitta'
         checks[f'{attempt}_bad_password'] = 'Bad rcon' in rcon('change_mode zombies', 'invalid-fixture')
         checks[f'{attempt}_status'] = fs_game in rcon('change_mode') and 'targets: none' in rcon('change_mode')
-        for requested in ('zombies', 'promod', 'hardcore', 'unknown'):
+        for requested in ('zombies', 'promod'):
             checks[f'{attempt}_unavailable_{requested}'] = 'Runtime unchanged' in rcon('change_mode ' + requested)
+        for requested in ('hardcore', 'unknown'):
+            checks[f'{attempt}_unsupported_{requested}'] = 'Unsupported mode' in rcon('change_mode ' + requested)
         for invalid in ('../zombies', 'mods/btd_alpha_001', 'https://example.invalid', 'zombies;quit'):
             checks[f'{attempt}_invalid_{invalid}'] = 'Invalid mode' in rcon('change_mode ' + invalid)
         with ThreadPoolExecutor(max_workers=2) as executor:

@@ -32,6 +32,8 @@ class Rcon(unittest.TestCase):
         path = Path(cls.workspace.name)
         pieces = [(ROOT / 'tests/rcon_harness.c').read_text()]
         for file, signature in [
+            ('src/sv_mode_bridge.c', 'qboolean SV_RconModeFraming('),
+            ('src/sv_mode_bridge.c', 'qboolean SV_RconModeCommand('),
             ('src/msg.c', 'char *MSG_ReadStringLine('),
             ('src/cmd.c', 'static void Cmd_TokenizeStringInternal('),
             ('src/cvar.c', 'static int Cvar_SetVariant( cvar_t *var, CvarValue value ,qboolean force ) {'),
@@ -72,6 +74,31 @@ class Rcon(unittest.TestCase):
                 if process.poll() is None:
                     process.kill()
                 process.communicate()
+
+    def test_mode_ingress_requires_authentication_and_complete_wire_frame(self):
+        self.assertEqual(self.udp(16, command='change_mode promod'), b'INGRESS_ALLOWED')
+        self.assertEqual(self.udp(16, wrong=True, command='change_mode promod'), b'Bad rcon')
+        self.assertIn(b'shorter than 8', self.udp(7, command='change_mode promod'))
+        password = ('Ab9' * 400)[:16]
+        for suffix in (b'\nquit', b'\0quit', b'\rquit'):
+            packet = b'\xff' * 4 + f'rcon {password} change_mode promod'.encode() + suffix
+            self.assertEqual(self.udp(16, packet=packet), b'INGRESS_INVALID')
+
+    def test_source_identity_uses_verified_record_not_numeric_name(self):
+        result=subprocess.run([str(self.binary),'--source-bound',
+            '76561198000000999 SyntheticAccountPassword'],text=True,capture_output=True,check=True)
+        self.assertIn('source_bound_to_verified_record=1 steamid=42',result.stdout)
+
+    def test_mode_request_logs_omit_untrusted_arguments(self):
+        self.assertEqual(self.udp(16,command='change_mode promod MODE_SECRET_CANARY'),b'INGRESS_ALLOWED')
+
+    def test_source_zero_account_cannot_impersonate_master_console(self):
+        rejected=subprocess.run([str(self.binary),'--source-zero','console SyntheticAccountPassword'],
+                                text=True,capture_output=True,check=True)
+        self.assertIn('source_rejected=1',rejected.stdout)
+        master=subprocess.run([str(self.binary),'--source-console','SyntheticServerPassword'],
+                              text=True,capture_output=True,check=True)
+        self.assertIn('source_master_console_authenticated=1',master.stdout)
 
     def test_udp_lengths_and_quotes(self):
         for length in (16, 23, 24, 28, 29, 32, 48, 64):

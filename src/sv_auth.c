@@ -54,27 +54,32 @@ authData_t auth_admins;
 #define AUTH_DEFAULT_POWER 1
 
 
-const char* Auth_FindSessionID(const char* sessionid)
+authData_admin_t* Auth_FindSessionAdmin(const char* sessionid)
 {
 	int i;
 	authData_admin_t *user;
 
-	if(strlen(sessionid) != 64)
+	if(!sessionid || strlen(sessionid) != 64)
 	{
 		return NULL;
 	}
 
 	for(i = 0, user = auth_admins.admins; i < MAX_AUTH_ADMINS; i++, user++){
 
-		if(!Q_stricmp(user->sessionid, sessionid))
+		if(user->steamid && *user->username && !Q_stricmp(user->sessionid, sessionid))
 		{
-			return user->username;
+			return user;
 		}
 	}
 	return NULL;
 
 }
 
+const char* Auth_FindSessionID(const char* sessionid)
+{
+    authData_admin_t *user = Auth_FindSessionAdmin(sessionid);
+    return user ? user->username : NULL;
+}
 const char* Auth_GetSessionId(const char* username, const char *password)
 {
 	int handle;
@@ -351,7 +356,7 @@ void Auth_ListAdmins_f( void ){
 authData_admin_t* Auth_GetAdminFromIndex( int index )
 {
 
-	if(index >= MAX_AUTH_ADMINS)
+	if(index < 0 || index >= MAX_AUTH_ADMINS)
 	{
 		return NULL;
 	}
@@ -434,6 +439,14 @@ void Auth_ChangePasswordByMasterAdmin_f()
     if(id == 0){
 			Com_Printf(CON_CHANNEL_DONT_FILTER,"Admin %s not found.\n",Cmd_Argv(1));
 			return;
+    }
+    /* Password administration cannot take over an equal/higher-ranked account.
+     * Full-power operators retain account recovery authority. */
+    if (Cmd_GetInvokerPower() != 100 &&
+        Auth_GetClPowerBySteamID(id) >= Cmd_GetInvokerPower())
+    {
+        Com_PrintError(CON_CHANNEL_DONT_FILTER, "Cannot reset an account at or above your own permission level.\n");
+        return;
     }
     Auth_ChangeAdminPassword( id, Cmd_Argv(2) );
 }

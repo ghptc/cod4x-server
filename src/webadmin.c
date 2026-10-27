@@ -559,7 +559,7 @@ void Webadmin_ConsoleCommand(xml_t* xmlobj, const char* command, uint64_t steami
 		// start redirecting all print outputs to the packet
 
 		powercmd = Cmd_GetPower(cmd);
-		if(powercmd > power)
+		if(powercmd < 0 || powercmd > power)
 		{
 			XA(" Insufficient permissions! ");
 				return;
@@ -605,8 +605,9 @@ void Webadmin_BuildLoginForm(xml_t* xmlobj, qboolean badtry, const char* banmsg)
 
 }
 
-void Webadmin_BuildMessage(msg_t* msg, const char* username, qboolean invalidloginattempt, const char* banmsg, const char* url, httpPostVals_t* values)
+void Webadmin_BuildMessage(msg_t* msg, authData_admin_t* authenticated, qboolean invalidloginattempt, const char* banmsg, const char* url, httpPostVals_t* values)
 {
+	const char *username = authenticated ? authenticated->username : NULL;
 
 	xml_t xmlbase;
 	xml_t* xmlobj = &xmlbase;
@@ -652,7 +653,7 @@ void Webadmin_BuildMessage(msg_t* msg, const char* username, qboolean invalidlog
 						Webadmin_BuildLoginForm(xmlobj, invalidloginattempt, banmsg);
 
 					}else {
-						steamid = Auth_GetSteamID(username);
+						steamid = authenticated->steamid;
 						if(!Q_strncmp(url +9, "/listadmins", 11))
 						{
 							Webadmin_BuildAdminList(xmlobj, steamid);
@@ -678,7 +679,7 @@ void Webadmin_BuildMessage(msg_t* msg, const char* username, qboolean invalidlog
 								if(Webadmin_GetUrlVal( url, "action", actionval, sizeof(actionval)))//nnjpls
 								{
 									if (strcmp(actionval, "logout") == 0) {
-										Auth_WipeSessionId(username);
+										authenticated->sessionid[0] = '\0';
 
 									}else{
 
@@ -802,6 +803,7 @@ qboolean HTTPCreateWebadminMessage(ftRequest_t* request, msg_t* msg, char* sessi
 	qboolean invalidlogin = qfalse;
 	const char* username = NULL;
 	const char* password = NULL;
+	authData_admin_t *authenticated = NULL;
 
 
 	if(SV_PlayerBannedByip(&request->remote, banmsg, sizeof(banmsg)))
@@ -810,7 +812,8 @@ qboolean HTTPCreateWebadminMessage(ftRequest_t* request, msg_t* msg, char* sessi
 		return qtrue;
 	}
 
-	username = Auth_FindSessionID(sessionkey);
+	authenticated = Auth_FindSessionAdmin(sessionkey);
+	username = authenticated ? authenticated->username : NULL;
 
 	if(username == NULL)
 	{
@@ -842,12 +845,13 @@ qboolean HTTPCreateWebadminMessage(ftRequest_t* request, msg_t* msg, char* sessi
 		if(session != NULL)
 		{
 			strcpy(sessionkey, session);
+			authenticated = Auth_FindSessionAdmin(sessionkey);
 		}
 	}else{
 		Com_Printf(CON_CHANNEL_SERVER,"Already logged in as: %s\n", username);
 	}
 
-	Webadmin_BuildMessage(msg, username, invalidlogin, NULL, request->url, values);
+	Webadmin_BuildMessage(msg, authenticated, invalidlogin, NULL, request->url, values);
 
 	return qtrue;
 }
