@@ -1,4 +1,5 @@
-/* Promod bot population and human admission. See docs/bots.md. AGPL-3.0-or-later. */
+/* Native bot population and human admission. See docs/bots.md and
+ * docs/zombies-allied-bots.md. AGPL-3.0-or-later. */
 #include "server.h"
 #include "cmd.h"
 #include "cvar.h"
@@ -6,8 +7,10 @@
 #include "qcommon_io.h"
 #include "sv_bot_policy.h"
 #include "g_sv_shared.h"
+#include "filesystem.h"
 
 static cvar_t *bot_enable, *bot_ai_ready, *bot_fill_limit, *bot_skill;
+static cvar_t *btd_allies_enable, *btd_allies_limit;
 static bot_fill_state_t fill_state = BOT_FILL_ACTIVE;
 static int next_fill;
 
@@ -20,11 +23,24 @@ static int BotCount(void)
     return count;
 }
 
+static qboolean BotAlliedMode(void)
+{
+    return fs_gameDirVar &&
+        !strcmp(fs_gameDirVar->string, "mods/btd_alpha_001") &&
+        !strcmp(sv_g_gametype->string, "war");
+}
+
+static int BotLimitValue(void)
+{
+    return BotAlliedMode() ? btd_allies_limit->integer : bot_fill_limit->integer;
+}
+
 static qboolean BotCanAdd(void)
 {
-    return com_sv_running && com_sv_running->integer && bot_enable->boolean &&
+    return com_sv_running && com_sv_running->integer &&
         bot_ai_ready->boolean && sv.state == SS_GAME && !sv.restarting &&
-        sv_pure->boolean && !strcmp(sv_g_gametype->string, "sd");
+        sv_pure->boolean && ((BotAlliedMode() && btd_allies_enable->boolean) ||
+        (bot_enable->boolean && !strcmp(sv_g_gametype->string, "sd")));
 }
 
 static qboolean BotQueueWaiting(void)
@@ -38,7 +54,7 @@ static qboolean BotQueueWaiting(void)
 static qboolean BotAddOne(void)
 {
     char name[32];
-    Com_sprintf(name, sizeof(name), "[BOT] Promod %02d", BotCount() + 1);
+    Com_sprintf(name, sizeof(name), "[BOT] %s %02d", BotAlliedMode() ? "Ally" : "Promod", BotCount() + 1);
     return SV_AddBotClient(name) != NULL;
 }
 
@@ -104,7 +120,7 @@ static void BotAdd(void)
         Com_Printf(CON_CHANNEL_SERVER, "Bots not ready, or a human connection is queued. No bots added.\n");
         return;
     }
-    allowed = BotFill_Target(BotHumanCount(NULL), sv_maxclients->integer, bot_fill_limit->integer) - BotCount();
+    allowed = BotFill_Target(BotHumanCount(NULL), sv_maxclients->integer, BotLimitValue()) - BotCount();
     while (added < count && added < allowed && BotAddOne()) ++added;
     Com_Printf(CON_CHANNEL_SERVER, "Added %d bots.\n", added);
 }
@@ -122,7 +138,7 @@ static void BotLimit(void)
 {
     int count;
     if (!BotCountArgument(&count)) return;
-    Cvar_SetInt(bot_fill_limit, count);
+    Cvar_SetInt(BotAlliedMode() ? btd_allies_limit : bot_fill_limit, count);
     /* Enforce zero/reductions even while Auto-Fill is paused. */
     while (BotCount() > count && SV_RemoveBot()) {}
 }
@@ -146,7 +162,7 @@ static void BotAutoFill(void)
         return;
     }
     if (!strcmp(Cmd_Argv(1), "1")) {
-        Cvar_SetBool(bot_enable, qtrue);
+        Cvar_SetBool(BotAlliedMode() ? btd_allies_enable : bot_enable, qtrue);
         fill_state = BOT_FILL_ACTIVE;
     } else {
         fill_state = BotFill_Pause(BotHumanCount(NULL));
@@ -169,8 +185,8 @@ static void BotStatus(void)
         else if (cl->state != CS_ACTIVE) ++pending;
     }
     Com_Printf(CON_CHANNEL_SERVER, "BOT_STATUS enabled=%d state=%s humans=%d connecting=%d bots=%d ready=%d pure=%d limit=%d difficulty=%s\n",
-        bot_enable->boolean, state, BotHumanCount(NULL), pending, bots, bot_ai_ready->boolean, sv_pure->integer,
-        bot_fill_limit->integer, bot_skill->integer == -1 ? "fixed" : bot_skill->integer == 0 ? "mixed" : va("%d", bot_skill->integer));
+        BotAlliedMode() ? btd_allies_enable->boolean : bot_enable->boolean, state, BotHumanCount(NULL), pending, bots, bot_ai_ready->boolean, sv_pure->integer,
+        BotLimitValue(), BotAlliedMode() ? "allied-mixed" : bot_skill->integer == -1 ? "fixed" : bot_skill->integer == 0 ? "mixed" : va("%d", bot_skill->integer));
 }
 
 void SV_BotManagerInit(void)
@@ -179,6 +195,8 @@ void SV_BotManagerInit(void)
     bot_ai_ready = Cvar_RegisterBool("bot_ai_ready", qfalse, 0, "Set by the server AI script after loading map navigation");
     bot_fill_limit = Cvar_RegisterInt("bot_fill_limit", 12, 0, 12, 0, "Maximum AI bots; humans also consume the 12-slot population");
     bot_skill = Cvar_RegisterInt("bot_skill", -1, -1, 7, 0, "Bot skill: -1 original fixed profile, 0 mixed, 1..7 Bot Warfare tiers");
+    btd_allies_enable = Cvar_RegisterBool("btd_allies_enable", qtrue, 0, "Enable the isolated BTD allied controller");
+    btd_allies_limit = Cvar_RegisterInt("btd_allies_limit", 5, 0, 12, 0, "Maximum allied BTD bots");
     Cvar_RegisterBool("bot_debug", qfalse, 0, "Write bot gameplay evidence to the game log");
     Cmd_AddPCommand("bot_kickall", BotKickAll, 80);
     Cmd_AddPCommand("bot_killall", BotKillAll, 80);
@@ -219,7 +237,7 @@ void SV_BotManagerFrame(void)
     int bots, target;
     if (!com_sv_running || !com_sv_running->integer || sv.state != SS_GAME || sv.restarting) return;
     bots = BotCount();
-    target = BotFill_Target(BotHumanCount(NULL), sv_maxclients->integer, bot_fill_limit->integer);
+    target = BotFill_Target(BotHumanCount(NULL), sv_maxclients->integer, BotLimitValue());
     if (bots > target) { SV_RemoveBot(); return; }
     if (!BotCanAdd() || fill_state != BOT_FILL_ACTIVE) return;
     if (next_fill > svs.time && next_fill - svs.time < 3000) return;
