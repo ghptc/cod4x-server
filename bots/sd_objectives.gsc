@@ -13,6 +13,7 @@ start()
     if (getdvarint("bot_debug")) logprint("PMBOT SD_START slot=" + self getentitynumber() + "\n");
     self.bot_lock_goal = false;
     self thread cleanup_on_death();
+    self thread cleanup_on_reset();
     self thread bot_sd_attackers();
     self thread bot_sd_defenders();
 }
@@ -24,6 +25,17 @@ cleanup_on_death()
     level endon("game_ended");
     self waittill("death");
     self notify("bot_use");
+    self BotBuiltinBotAction("-activate");
+}
+
+cleanup_on_reset()
+{
+    self endon("disconnect");
+    self endon("death");
+    level endon("game_ended");
+    self waittill("promod_ai_reset");
+    self notify("bot_use");
+    self notify("new_goal");
     self BotBuiltinBotAction("-activate");
 }
 

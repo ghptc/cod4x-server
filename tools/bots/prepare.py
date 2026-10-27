@@ -79,6 +79,9 @@ def sd_objective_source(script):
         'event = self waittill_any_return( "goal", "bad_path", "new_goal" );\n'
         '\tif (event == "bad_path") data.failed_site = plant;')
     blocks['bot_sd_attackers_loop'] = attacker
+    for name in ('bot_sd_attackers_loop', 'bot_sd_defenders_loop'):
+        blocks[name] = blocks[name].replace('{',
+            '{\n\tif (!getdvarint("bot_sd_objectives")) { wait 1; return; }', 1)
     blocks['bot_escort_obj'] = replace_once(blocks['bot_escort_obj'],
         'carrier == obj.carrier', 'carrier != obj.carrier')
     result = '\n\n'.join(blocks.values())

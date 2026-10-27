@@ -56,19 +56,21 @@ must pass on final PR heads; existing workflows are retained without changes.
 `tests/run_sd_native.py` creates a new loopback process and verifies pinned
 Promod/header identities. Its native fixture uses **test-only positioning** to
 exercise legitimate pickup, interrupted plant/defuse and real native completion.
-Accepted Crash evidence: `/tmp/cod4x-sd-native-vffuwzhm/results.json` shows plant
-5150ms, defuse 7100ms, both interruptions, pure=1 and all 12 requested active
-names. It does not prove autonomous navigation or real-client gameplay.
+Accepted Crash evidence: `/tmp/cod4x-sd-native-qakidgli/results.json` shows plant
+5150ms, defuse 7100ms, both interruptions, carrier death/drop/recovery, death during defuse, native
+round reset, pure=1 and all 12 requested names retained across the round. Strike
+(`/tmp/cod4x-sd-native-tuz9t_ot`), Winter Crash (`4hrkqryt`) and Backlot
+(`v4up0t8v`, with the same `/tmp/cod4x-sd-native-` prefix) also passed. It does not prove autonomous navigation or real-client gameplay.
 Rejected runs are retained privately and are not qualification evidence.
 
 The separate `--scenario navigation` fixture observes actual AI navigation/use,
 with combat suppressed solely in the test fixture; no positioning is used.
 Neither synthetic fixture certifies combat decisions, HUD, human bomb priority,
 interruption under fire, every supported map or a full competitive match.
-Death/drop, names across rounds/admission collisions, bot administration,
+Admission collisions/overflow, bot administration,
 Promod/Zombies gameplay regressions and the supported-map matrix must be recorded
-before qualification approval. Independent Principal architecture/security review
-is provisional until these gates and final CI are complete. Do not promote this
+before qualification approval. Independent Principal source architecture/security review approved draft review
+on 2026-10-27; gameplay/qualification approval and final CI remain pending. Do not promote this
 candidate based only on connected/active bots or prepared waypoint coverage.
 
 ## Rollback and freeze
