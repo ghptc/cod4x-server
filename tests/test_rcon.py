@@ -76,13 +76,15 @@ class Rcon(unittest.TestCase):
                 process.communicate()
 
     def test_mode_ingress_requires_authentication_and_complete_wire_frame(self):
-        self.assertEqual(self.udp(16, command='change_mode promod'), b'INGRESS_ALLOWED')
-        self.assertEqual(self.udp(16, wrong=True, command='change_mode promod'), b'Bad rcon')
-        self.assertIn(b'shorter than 8', self.udp(7, command='change_mode promod'))
-        password = ('Ab9' * 400)[:16]
-        for suffix in (b'\nquit', b'\0quit', b'\rquit'):
-            packet = b'\xff' * 4 + f'rcon {password} change_mode promod'.encode() + suffix
-            self.assertEqual(self.udp(16, packet=packet), b'INGRESS_INVALID')
+        for name in ('change_game', 'change_mode'):
+            with self.subTest(command=name):
+                self.assertEqual(self.udp(16, command=name+' promod'), b'INGRESS_ALLOWED')
+                self.assertEqual(self.udp(16, wrong=True, command=name+' promod'), b'Bad rcon')
+                self.assertIn(b'shorter than 8', self.udp(7, command=name+' promod'))
+                password = ('Ab9' * 400)[:16]
+                for suffix in (b'\nquit', b'\0quit', b'\rquit'):
+                    packet = b'\xff' * 4 + f'rcon {password} {name} promod'.encode() + suffix
+                    self.assertEqual(self.udp(16, packet=packet), b'INGRESS_INVALID')
 
     def test_source_identity_uses_verified_record_not_numeric_name(self):
         result=subprocess.run([str(self.binary),'--source-bound',
@@ -90,7 +92,8 @@ class Rcon(unittest.TestCase):
         self.assertIn('source_bound_to_verified_record=1 steamid=42',result.stdout)
 
     def test_mode_request_logs_omit_untrusted_arguments(self):
-        self.assertEqual(self.udp(16,command='change_mode promod MODE_SECRET_CANARY'),b'INGRESS_ALLOWED')
+        for name in ('change_game', 'change_mode'):
+            self.assertEqual(self.udp(16,command=name+' promod MODE_SECRET_CANARY'),b'INGRESS_ALLOWED')
 
     def test_udp_credential_commands_omit_arguments_from_logs(self):
         for command in ('AdminChangePassword owner MODE_SECRET_CANARY',

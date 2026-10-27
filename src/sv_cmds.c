@@ -2385,7 +2385,7 @@ static void SV_ChangeMode_f(void)
      * in the handler as well as the existing authenticated command ingress. */
     if (Cmd_GetInvokerPower() != 100)
     {
-        Com_Printf(CON_CHANNEL_DONT_FILTER, "change_mode requires administrative power 100.\n");
+        Com_Printf(CON_CHANNEL_DONT_FILTER, "change_game requires administrative power 100.\n");
         return;
     }
     if (Cmd_Argc() == 1)
@@ -2396,7 +2396,7 @@ static void SV_ChangeMode_f(void)
     }
     if (Cmd_Argc() != 2)
     {
-        Com_Printf(CON_CHANNEL_DONT_FILTER, "Usage: change_mode [mode-id]\n");
+        Com_Printf(CON_CHANNEL_DONT_FILTER, "Usage: change_game [promod|zombies] (change_mode alias)\n");
         return;
     }
     mode = Cmd_Argv(1);
@@ -2425,6 +2425,7 @@ void SV_AddOperatorCommands()
 	//Former safe commands
 	Cmd_AddPCommand ("systeminfo", SV_Systeminfo_f, 1);
 	Cmd_AddPCommand ("serverinfo", SV_Serverinfo_f, 1);
+	Cmd_AddPCommand ("change_game", SV_ChangeMode_f, 100);
 	Cmd_AddPCommand ("change_mode", SV_ChangeMode_f, 100);
 	Cmd_AddPCommand ("map", SV_Map_f, 60);
 	Cmd_AddCommand ("map_rotate", SV_MapRotate_f);

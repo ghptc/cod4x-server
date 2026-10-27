@@ -105,7 +105,7 @@ qboolean SV_RconModeFraming(const byte *wire, int length)
 qboolean SV_RconModeCommand(const char *raw)
 {
     while(*raw==' ') ++raw;
-    return !Q_stricmpn(raw,"change_mode",11) &&
+    return (!Q_stricmpn(raw,"change_game",11) || !Q_stricmpn(raw,"change_mode",11)) &&
         (!raw[11] || raw[11]==' ' || raw[11]=='\t' || raw[11]=='\n' || raw[11]=='\r' || raw[11]==';');
 }
 
@@ -116,12 +116,12 @@ qboolean SV_RconModeIngress(const char *raw, int power, const netadr_t *reply, q
     /* Recognize malformed variants too, so they cannot fall through tokenization. */
     while(*raw==' ') ++raw;
     if(!SV_RconModeCommand(raw)) return qfalse;
-    if(power!=100) { Com_Printf(CON_CHANNEL_DONT_FILTER,"Permission denied: change_mode requires power 100.\n"); return qtrue; }
+    if(power!=100) { Com_Printf(CON_CHANNEL_DONT_FILTER,"Permission denied: change_game requires power 100.\n"); return qtrue; }
     argument=raw+11;
     if(!framing || (*argument && *argument!=' ')) { Com_Printf(CON_CHANNEL_DONT_FILTER,"Invalid mode request.\n"); return qtrue; }
     while(*argument==' ') ++argument;
     if(*argument && strcmp(argument,"promod") && strcmp(argument,"zombies")) {
-        Com_Printf(CON_CHANNEL_DONT_FILTER,"Unsupported mode. Use exactly change_mode promod or change_mode zombies. Invalid mode request; runtime unchanged.\n"); return qtrue;
+        Com_Printf(CON_CHANNEL_DONT_FILTER,"Unsupported mode. Use exactly change_game promod or change_game zombies. Invalid mode request; runtime unchanged.\n"); return qtrue;
     }
 #ifdef _WIN32
     Com_Printf(CON_CHANNEL_DONT_FILTER,"Host controller unavailable on this platform. Runtime unchanged.\n");
@@ -134,10 +134,10 @@ qboolean SV_RconModeIngress(const char *raw, int power, const netadr_t *reply, q
             Com_Printf(CON_CHANNEL_DONT_FILTER,"Host controller unavailable; cached status may be stale.\n");
     } else {
         if(channel>=0 && !request_id[0]) close_channel();
-        if(channel>=0) Com_Printf(CON_CHANNEL_DONT_FILTER,"Transition request already in progress; use change_mode for status.\n");
+        if(channel>=0) Com_Printf(CON_CHANNEL_DONT_FILTER,"Transition request already in progress; use change_game for status.\n");
         else if(submit(argument,reply)) {
             snprintf(cached,sizeof(cached),"operation=%s mode=%s result=submitted phase=pending",request_id,argument);
-            Com_Printf(CON_CHANNEL_DONT_FILTER,"MODE_STATUS %s (not yet accepted). Use change_mode for status after reconnect.\n",cached);
+            Com_Printf(CON_CHANNEL_DONT_FILTER,"MODE_STATUS %s (not yet accepted). Use change_game for status after reconnect.\n",cached);
         } else Com_Printf(CON_CHANNEL_DONT_FILTER,"Host controller unavailable. Runtime unchanged.\n");
     }
 #endif
