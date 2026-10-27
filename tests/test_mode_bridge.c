@@ -42,6 +42,18 @@ static void receive(const char *code,const char *id,const char *mode,const char 
  incoming_size=snprintf((char*)incoming,sizeof(incoming),"C4M1 %s %s %s %s",code,id,mode,phase);
 }
 int main(void) {
+ const char *commands[]={"change_game","change_mode"};
+ for(unsigned c=0;c<2;c++) {
+  char command[160];
+  reset();
+  for(int p=0;p<100;p++) {snprintf(command,sizeof(command),"%s zombies",commands[c]);assert(SV_RconModeIngress(command,p,NULL,qtrue));assert(!sockets);}
+  const char *invalid[]={"promod;quit","promod extra","../zombies","$(id)","promod\nquit"};
+  for(unsigned i=0;i<sizeof(invalid)/sizeof(*invalid);i++) {snprintf(command,sizeof(command),"%s %s",commands[c],invalid[i]);assert(SV_RconModeIngress(command,100,NULL,qtrue));assert(!sockets);}
+  snprintf(command,sizeof(command),"%s zombies",commands[c]);
+  assert(SV_RconModeIngress(command,100,NULL,qfalse));assert(!sockets);
+  assert(SV_RconModeIngress(command,100,NULL,qtrue));assert(sockets==1 && sends==1 && strstr(sent," zombies"));
+ }
+ assert(!SV_RconModeCommand("change_game_extra zombies"));
  const char *bad[]={"hardcore","Zombies","promod;quit","promod //comment","\"promod\"","promod extra","promod\nquit","../zombies","$(id)","promod\t"};
  reset();
  for(int p=0;p<100;p++) {assert(SV_RconModeIngress("change_mode zombies",p,NULL,qtrue));assert(!sockets);assert(strstr(output,"Permission denied"));}

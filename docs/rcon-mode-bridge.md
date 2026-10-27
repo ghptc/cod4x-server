@@ -3,7 +3,9 @@
 Baseline: protected master `701a7c5df46c5723705dad0408afa44fb89b0ad9`.
 The previous `change_mode` preflight remains nonmutating for console, command
 buffers and GSC. Authenticated UDP and Source RCON have a separate native ingress
-for exactly `change_mode promod`, `change_mode zombies`, or `change_mode` status.
+for exactly `change_game promod`, `change_game zombies`, or `change_game` status.
+`change_mode` remains a backward-compatible alias through the same dispatcher;
+both names have identical framing, authorization and argument-redaction checks.
 Both registration and ingress require power 100. A command-power metadata change
 cannot lower the native floor. No console/GSC invocation inherits an ambient
 "authenticated" flag.
