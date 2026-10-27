@@ -44,7 +44,7 @@ Pinned inputs are unchanged: Bot Warfare v2.2.0 at
 `7b52b462e40fa68287b9e54602e52da83b17766c`, Promod LIVE V2.20 EU and all
 eight header hashes in `bots/dependencies.json`. Licensed extracted/generated
 scripts stay private. Source terms and credits: [third-party-bots.md](third-party-bots.md).
-The preserved PoC remains read-only. Final native build 1291 SHA-256:
+The preserved PoC remains read-only. Objective qualification build 1291 SHA-256:
 `e5278dd552ad3fd486fbc3d295ed680804a272327185f4848ab2915893c20584`.
 Final reviewed preparation manifest SHA-256:
 `bf0ff97b01490d20316f1bc2c563f0bd837fff69b389dbe3b1b5ee3946ca2d63`.
@@ -97,13 +97,27 @@ engine Linux/Windows CI passed on the initial draft heads; required checks must
 also pass on the final heads. No workflow or protection was changed.
 
 Independent Principal source architecture/security review approved draft review
-on 2026-10-27. Source review is bound to engine `a4e6c5f` and coordinated catalog
-`ca71c9d` / workspace `815cd89`; subsequent changes concern fixture observation
-and evidence documentation. Full qualification approval remains pending.
+on 2026-10-27. Objective source review is bound to engine `a4e6c5f`; independent review also
+approved the final name-cursor delta committed as `2cfc558`. Coordinated catalog
+`ca71c9d` and workspace `6d92b98` retain independent source approval. Final naming
+qualification build 1293 SHA-256 is
+`84294d91a62c3dbfeab7ec3eb86cd1a2b39d8be529877fb0a68c9bcea5dae64c`.
+`/tmp/cod4x-sd-native-csvkxixf` passes full native lifecycle, names across rounds
+and rotation through all fifteen names across replacement admissions;
+`/tmp/cod4x-sd-native-kc8psw70` repeats duplicate/unsafe/overflow/human-collision
+and administration qualification with that same binary. Full qualification approval remains pending.
 Supervised real-client combat, both sites/routes across supported maps, human
 bomb ownership/HUD, full matches, and exact-artifact homologation/rollback must
-be qualified before promotion. Existing Zombies native regression is also run
-with the new binary; see the final PR validation record for its result.
+be qualified before promotion. Zombies regression must not be silently certified: two build-1291 runs
+(`/tmp/btd-five-allies-vja6233l` and `n_tk7kgw` with the same prefix) passed 51/52,
+failing only `five_allies_native_engagement`. The unchanged fixture using the
+previously qualified binary `2aac8c013b234a4dee8272bcb8e3fc09f5df3e35a7f8f936ccf0bb464e607b70`
+passed 52/52 at `/tmp/btd-five-allies-8q8wczc9`. Purity, headers, native hits,
+lifecycle, human priority, administration and script-error checks passed in the
+51/52 runs. A prior wrong-baseline run without the existing Killhouse repair was
+rejected separately. Thresholds and Zombies source are unchanged; preserve all
+candidate/control evidence and keep the gameplay gate open. The final build-1293
+run is recorded in the final PR validation update.
 
 ## Rollback and freeze
 
@@ -116,3 +130,6 @@ deployments, bridge activation or production promotion are performed here.
 After approved merges, prepare one pinned homologation candidate, obtain owner
 deployment approval, supervise real-client gameplay and exact-artifact rollback,
 then request qualification approval before proposing production promotion.
+
+Development is frozen across the three repositories outside focused qualification
+and remediation of this final candidate. No additional features are authorized.
