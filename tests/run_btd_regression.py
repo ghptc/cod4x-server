@@ -20,8 +20,12 @@ for name in ('runtime', 'game', 'binary'):
     p.add_argument('--' + name, required=True, type=Path)
 p.add_argument('--fixed', action='store_true')
 p.add_argument('--reproduce-spawn-defect', action='store_true', help='Apply death guard only, expect the native missing-angle failure')
-p.add_argument('--scenario', choices=('expression', 'death', 'lifecycle'), required=True)
+p.add_argument('--scenario', choices=('expression', 'death', 'lifecycle', 'classic'), required=True)
+p.add_argument('--classic-control', choices=('timer', 'teleport'),
+               help='Negative control: restore one original anti-camping mechanism')
 a = p.parse_args()
+if a.classic_control and (a.scenario != 'classic' or not a.fixed):
+    p.error('--classic-control requires --fixed --scenario classic')
 assert (a.runtime / '.bot-test-runtime').is_file()
 spec = importlib.util.spec_from_file_location('btd', ROOT / 'tools/btd/prepare.py')
 btd = importlib.util.module_from_spec(spec); spec.loader.exec_module(btd)
@@ -53,6 +57,11 @@ fixture = fixture.replace('BTD_TEST_CONDITION', condition.replace('eInflictor', 
 if a.scenario == 'lifecycle':
     with (mod/'canonical-mode.cfg').open('a') as cfg:
         cfg.write('\nset btd_grace_time "10"\nset btd_wave_settings "2"\nset btd_start_zoms "5"\n')
+if a.scenario == 'classic':
+    with (mod / 'canonical-mode.cfg').open('a') as cfg:
+        cfg.write('\nset btd_camp_max_time "2"\nset btd_camp_message_time "1"\n')
+        if a.classic_control:
+            cfg.write('set btd_anticamp "' + {'timer': '2', 'teleport': '1'}[a.classic_control] + '"\n')
 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
     s.bind(('127.0.0.1', 0)); port = s.getsockname()[1]
 cmd = [str(home / 'cod4x18_dedrun'), '+set', 'dedicated', '1', '+set', 'net_ip', '127.0.0.1',
@@ -94,8 +103,8 @@ with logpath.open('w') as log:
             text = re.sub(r'\^[0-9]', '', logpath.read_text(errors='replace'))
             if 'script runtime error' in text or 'script compile error' in text: break
             proc.stdin.write(b'btd_test_result\nbtd_test_respawn\nbtd_test_zombie_spawn\nbtd_test_wave\n'); proc.stdin.flush()
-            success = {'expression': 'expression_pass', 'death': 'death_callback_survived', 'lifecycle': 'lifecycle_pass'}[a.scenario]
-            if '"'+success+'"' in text or re.search(r'"(?:spawn|respawn|zombie_spawn|wave)_failed"', text): break
+            success = {'expression': 'expression_pass', 'death': 'death_callback_survived', 'lifecycle': 'lifecycle_pass', 'classic': 'classic_pass'}[a.scenario]
+            if '"'+success+'"' in text or re.search(r'"(?:spawn|respawn|zombie_spawn|wave)_failed"|"classic_[a-z_]+(?:failed|enabled)"', text): break
         if a.scenario == 'lifecycle' and '"lifecycle_pass"' in text and not a.reproduce_spawn_defect:
             time.sleep(2)
             for attempt in range(2):
@@ -122,11 +131,16 @@ result = {'evidence': str(home), 'scenario': a.scenario, 'fixed': a.fixed,
           'respawn_pass': '"btd_test_respawn" is: "passed"' in text,
           'zombie_spawn_pass': '"btd_test_zombie_spawn" is: "passed"' in text,
           'wave_pass': '"btd_test_wave" is: "passed"' in text,
+          'classic_pass': '"classic_pass"' in text,
+          'classic_control': a.classic_control,
+          'classic_control_detected': bool(a.classic_control and '"classic_'+a.classic_control+'_enabled"' in text),
           'lifecycle_pass': '"lifecycle_pass"' in text}
 (home/'results.json').write_text(json.dumps(result, indent=2)+'\n')
 print(json.dumps(result, indent=2))
-expected = result[{'expression':'expression_pass','death':'death_callback_survived','lifecycle':'lifecycle_pass'}[a.scenario]]
-if a.reproduce_spawn_defect:
+expected = result[{'expression':'expression_pass','death':'death_callback_survived','lifecycle':'lifecycle_pass','classic':'classic_pass'}[a.scenario]]
+if a.classic_control:
+    assert not error and result['classic_control_detected'], 'Negative control not detected: '+str(home)
+elif a.reproduce_spawn_defect:
     assert error and 'type undefined is not a vector' in text, 'Spawn defect not reproduced: '+str(home)
 elif a.fixed: assert not error and expected, 'Fixed regression failed: '+str(home)
 else: assert error and "has unmatching types 'undefined' and 'string'" in text, 'Expected failure not reproduced: '+str(home)
