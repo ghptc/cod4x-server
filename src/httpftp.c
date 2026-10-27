@@ -2018,6 +2018,12 @@ static int FTP_SendReceiveData(ftRequest_t* request)
  */
 #ifndef DEMOEXT
 
+/* The built-in HTTP service accepts small administrative forms, not uploads.
+ * These limits also bound incomplete requests before any length arithmetic. */
+#define HTTP_SERVER_MAX_HEADER 16384
+#define HTTP_SERVER_MAX_BODY 65536
+#define HTTP_SERVER_MAX_REQUEST (HTTP_SERVER_MAX_HEADER + HTTP_SERVER_MAX_BODY)
+
 int HTTPServer_ReadMessage(netadr_t* from, msg_t* msg, ftRequest_t* request)
 {
 
@@ -2025,7 +2031,7 @@ int HTTPServer_ReadMessage(netadr_t* from, msg_t* msg, ftRequest_t* request)
 	byte* newbuf;
 	char* line;
 	int newsize, i;
-	qboolean gotheader;
+	qboolean gotheader, haveContentLength = qfalse;
 
 	if(request->remote.type == 0)
 	{
@@ -2034,60 +2040,67 @@ int HTTPServer_ReadMessage(netadr_t* from, msg_t* msg, ftRequest_t* request)
 
 	}
 
-	if (request->recvmsg.maxsize - request->recvmsg.cursize < msg->cursize)
+	/* Do not size allocations from Content-Length while copying a larger TCP
+	 * chunk. This service closes each response, so pipelined/excess data is
+	 * rejected rather than interpreted as another request. Reserve a NUL for
+	 * the form parser, including requests ending exactly at buffer capacity. */
+	if (msg->cursize < 0 || request->recvmsg.cursize < 0 ||
+	    request->recvmsg.cursize > HTTP_SERVER_MAX_REQUEST ||
+	    msg->cursize > HTTP_SERVER_MAX_REQUEST - request->recvmsg.cursize)
+		return -1;
+	newsize = request->recvmsg.cursize + msg->cursize;
+	if (request->finallen != -1 && newsize > request->finallen)
+		return -1;
+	if (request->recvmsg.maxsize < newsize + 1)
 	{
-		if(request->finallen != -1)
-		{
-			newsize = request->finallen;
-		}else {
-			newsize = 2 * request->recvmsg.maxsize + msg->cursize;
-		}
-
-		newbuf = L_Malloc(newsize);
-		if(newbuf == NULL)
-		{
-			return -1;
-		}
-
-		Com_Memcpy(newbuf, request->recvmsg.data, request->recvmsg.cursize);
-
+		newbuf = L_Malloc(newsize + 1);
+		if (!newbuf) return -1;
+		if (request->recvmsg.cursize)
+			Com_Memcpy(newbuf, request->recvmsg.data, request->recvmsg.cursize);
 		L_Free(request->recvmsg.data);
 		request->recvmsg.data = newbuf;
-		request->recvmsg.maxsize = newsize;
-
+		request->recvmsg.maxsize = newsize + 1;
 	}
-
-	Com_Memcpy(&request->recvmsg.data[request->recvmsg.cursize], msg->data, msg->cursize);
-
-	request->recvmsg.cursize += msg->cursize;
+	if (msg->cursize)
+		Com_Memcpy(request->recvmsg.data + request->recvmsg.cursize, msg->data, msg->cursize);
+	request->recvmsg.cursize = newsize;
+	request->recvmsg.data[newsize] = '\0';
 
 	/* Is header complete ? */
 	if(request->finallen == -1)
 	{
 		gotheader = qfalse;
-		/* 1st check if the header is complete */
-		while ((line = MSG_ReadStringLine(&request->recvmsg, stringlinebuf, sizeof(stringlinebuf))) && line[0] != '\0' )
+		/* Locate framing on raw bytes, never on a truncated/string-decoded line. */
+		for (i = 0; i + 3 < request->recvmsg.cursize; ++i)
 		{
-			if(line[0] == '\r')
+			if (!memcmp(request->recvmsg.data + i, "\r\n\r\n", 4))
 			{
+				request->headerLength = i + 4;
 				gotheader = qtrue;
 				break;
 			}
 		}
-		if(gotheader == qfalse)
+		if (!gotheader)
+			return request->recvmsg.cursize >= HTTP_SERVER_MAX_HEADER ? -1 : 0;
+		if (request->headerLength > HTTP_SERVER_MAX_HEADER ||
+		    memchr(request->recvmsg.data, '\0', request->headerLength)) return -1;
+		/* MSG_ReadStringLine must never truncate a framing/header line. */
+		newsize = 0;
+		for (i = 0; i < request->headerLength; ++i)
 		{
-			return 0;
+			if (request->recvmsg.data[i] == '\n') newsize = 0;
+			else if (++newsize >= sizeof(stringlinebuf) - 1) return -1;
 		}
 		MSG_BeginReading(&request->recvmsg);
 
 		line = MSG_ReadStringLine(&request->recvmsg, stringlinebuf, sizeof(stringlinebuf));
-		if (!Q_strncmp(line, "HEAD", 4)) {
+		if (!Q_strncmp(line, "HEAD ", 5)) {
 			request->mode = HTTP_HEAD;
 			line += 5;
-		}else if (!Q_strncmp(line, "POST", 4)) {
+		}else if (!Q_strncmp(line, "POST ", 5)) {
 			request->mode = HTTP_POST;
 			line += 5;
-		}else if (!Q_strncmp(line, "GET", 3)) {
+		}else if (!Q_strncmp(line, "GET ", 4)) {
 			request->mode = HTTP_GET;
 			line += 4;
 		}else {
@@ -2098,17 +2111,19 @@ int HTTPServer_ReadMessage(netadr_t* from, msg_t* msg, ftRequest_t* request)
 		i = 0;
 		while (*line != ' ' && *line != '\r' && *line)
 		{
+			if (i >= sizeof(request->url) - 1) return -1;
 			request->url[i] = *line;
 			i++;
 			line++;
 		}
 
+		request->url[i] = '\0';
 		if(*line == ' ')
 		{
 			line++;
 		}
 
-		if(Q_stricmpn(line,"HTTP/1.",7) || isInteger(line + 7, 2) == qfalse || isInteger(line + 9, 4) == qfalse)
+		if(strcmp(line, "HTTP/1.0\r") && strcmp(line, "HTTP/1.1\r"))
 		{
 			Com_PrintError(CON_CHANNEL_FILEDL,"HTTP_ReceiveData: Packet is corrupt!\nDebug: %s\n", line);
 
@@ -2130,17 +2145,25 @@ int HTTPServer_ReadMessage(netadr_t* from, msg_t* msg, ftRequest_t* request)
 		{
 			if(!Q_stricmpn("Content-Length:", line, 15))
 			{
-				if(isInteger(line + 15, 0) == qfalse)
+				const char *value = line + 15;
+				int length = 0;
+				if (haveContentLength) return -1;
+				haveContentLength = qtrue;
+				while (*value == ' ' || *value == '\t') ++value;
+				if (*value < '0' || *value > '9') return -1;
+				while (*value >= '0' && *value <= '9')
 				{
-					Com_PrintError(CON_CHANNEL_FILEDL,"Sec_GetHTTPPacket: Packet is corrupt!\nDebug: %s\n", line);
-					return -1;
+					int digit = *value++ - '0';
+					if (length > (HTTP_SERVER_MAX_BODY - digit) / 10) return -1;
+					length = length * 10 + digit;
 				}
-				request->contentLength = atoi(line + 15);
-				if(request->contentLength < 0)
-				{
-					request->contentLength = 0;
-					return -1;
-				}
+				while (*value == ' ' || *value == '\t') ++value;
+				if (*value && strcmp(value, "\r")) return -1;
+				request->contentLength = length;
+			}
+			else if (!Q_stricmpn("Transfer-Encoding:", line, 18))
+			{
+				return -1; /* Chunked/request smuggling framing is unsupported. */
 			}
 			else if(!Q_stricmpn("Content-Type:", line, 13))
 			{
@@ -2171,10 +2194,9 @@ int HTTPServer_ReadMessage(netadr_t* from, msg_t* msg, ftRequest_t* request)
 		request->headerLength = request->recvmsg.readcount;
 		request->finallen = request->contentLength + request->headerLength;
 
-		if(request->finallen > 1024*1024*640)
-		{
-			request->finallen = request->headerLength;
-		}
+		if (request->headerLength > HTTP_SERVER_MAX_HEADER ||
+		    request->recvmsg.cursize > request->finallen)
+			return -1;
 
 	}
 	if(request->recvmsg.maxsize == request->finallen)
@@ -2202,7 +2224,7 @@ void HTTPServer_BuildMessage( ftRequest_t* request, char* status, char* message,
 					  "Content-Length: %d\r\n"
 					  "Access-Control-Allow-Origin: none\r\n"
 					  "Content-Type: text/html\r\n"
-					  "Set-Cookie: SessionId=%s; Path=/; HttpOnly\r\n"
+					  "Set-Cookie: SessionId=%s; Path=/; HttpOnly; SameSite=Strict\r\n"
 					  "\r\n", status, len, sessionkey);
 
 
@@ -2348,34 +2370,28 @@ const char* HTTP_GetFormDataItem(httpPostVals_t* values, const char* search)
 
 void HTTPServer_ReadSessionId(ftRequest_t* request, char* sessionkey, int len)
 {
-	char* cookieval;
+	const char *cursor = request->cookie, *value;
 	int i;
-
-
-	cookieval = strstr(request->cookie, "SessionId=" );
-	if(cookieval == NULL)
+	if (len < 1) return;
+	sessionkey[0] = '\0';
+	if (len < 65) return;
+	while (*cursor)
 	{
-		sessionkey[0] = '\0';
-		return;
+		while (*cursor == ' ' || *cursor == '\t' || *cursor == ';') ++cursor;
+		if (!strncmp(cursor, "SessionId=", 10))
+		{
+			value = cursor + 10;
+			for (i = 0; i < 64; ++i)
+				if (!((value[i] >= '0' && value[i] <= '9') ||
+				      (value[i] >= 'a' && value[i] <= 'f') ||
+				      (value[i] >= 'A' && value[i] <= 'F'))) return;
+			if (value[64] && value[64] != ';' && value[64] != ' ' && value[64] != '\r') return;
+			Com_Memcpy(sessionkey, value, 64);
+			sessionkey[64] = '\0';
+			return;
+		}
+		while (*cursor && *cursor != ';') ++cursor;
 	}
-	cookieval += 10;
-	i = 0;
-
-	while (cookieval[i] != '\0' && cookieval[i] != ';' && cookieval[i] != ' ') {
-		i++;
-	}
-	if(cookieval[i] == ';' && cookieval[i] == ' ')
-	{
-		cookieval[i] = '\0';
-	}
-
-	Q_strncpyz(sessionkey, cookieval, len);
-
-	if(sessionkey[strlen(sessionkey) -1] == '\r')
-	{
-		sessionkey[strlen(sessionkey) -1] = '\0';
-	}
-
 }
 
 #define MAX_HTTPCLIENTS 256
@@ -2449,7 +2465,7 @@ int HTTPServer_Event(netadr_t* from, msg_t* msg, int connectionId)
 	{
 		HTTPServer_ReadSessionId(request, sessionkey, sizeof(sessionkey));
 		HTTP_ParseFormDataBody((char*)request->recvmsg.data + request->headerLength, values);
-		Com_Printf(CON_CHANNEL_FILEDL,"SessionID is: %s\n",  sessionkey);
+		/* Session cookies are bearer credentials and must never enter logs. */
 
 		HTTPServer_BuildResponse( request, sessionkey, values);
 
