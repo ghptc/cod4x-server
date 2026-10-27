@@ -30,6 +30,8 @@ class BtdPreparation(unittest.TestCase):
         self.raw = ('fixture() { if(' + btd.DEATH_CONDITION + ') return true; }').encode()
         marker = b'\xff' * 4 + btd.SCRIPT.encode() + b'\0'
         payload = b'fixture!' + struct.pack('<I', len(self.raw)) + marker + self.raw + b'\0'
+        self.spawn_raw = ('init() { ' + btd.SPAWN_ORIGIN + ' }').encode()
+        payload += struct.pack('<I', len(self.spawn_raw)) + b'\xff'*4 + btd.SPAWN_SCRIPT.encode() + b'\0' + self.spawn_raw + b'\0'
         self.fastfile = b'fixture-head' + zlib.compress(payload)
         (mod / 'mod.ff').write_bytes(self.fastfile)
         (mod / 'server.cfg').write_text('unsafe sample must not be packaged')
@@ -46,7 +48,8 @@ class BtdPreparation(unittest.TestCase):
         hashes = {str(p.relative_to(self.source)): btd.digest(p) for p in self.source.rglob('*') if p.is_file()}
         (self.root / 'tools/btd/dependencies.json').write_text(json.dumps(
             {'files': hashes, 'default_cfgs': ['btd_settings.cfg'],
-             'death_callback_source_sha256': hashlib.sha256(self.raw).hexdigest()}))
+             'death_callback_source_sha256': hashlib.sha256(self.raw).hexdigest(),
+             'spawn_points_source_sha256': hashlib.sha256(self.spawn_raw).hexdigest()}))
         (self.root / 'bots/dependencies.json').write_text(json.dumps(
             {'integrity_headers': {p.name: btd.digest(p) for p in self.headers.iterdir()}}))
         self.output = self.root / 'runtime'
@@ -100,3 +103,9 @@ class BtdPreparation(unittest.TestCase):
         ff = b'fixture-head' + zlib.compress(b'fixture!' + struct.pack('<I', len(raw)) + marker + raw + b'\0')
         with self.assertRaisesRegex(ValueError, 'condition'):
             btd.death_overlay(ff, hashlib.sha256(raw).hexdigest())
+
+    def test_spawn_points_receive_native_vector_angles(self):
+        self.prepare()
+        overlay = self.output / 'mods/btd_alpha_001' / btd.SPAWN_SCRIPT.replace('.gsc', '.gsx')
+        self.assertEqual(overlay.read_bytes(), self.spawn_raw.replace(
+            btd.SPAWN_ORIGIN.encode(), (btd.SPAWN_ORIGIN+' temp.angles = (0, 0, 0);').encode()))

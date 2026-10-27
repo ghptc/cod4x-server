@@ -50,7 +50,7 @@ for attempt in range(2):
     service = {'entrypoint': [runtime.EXECUTABLE], 'read_only': True,
         'volumes': [{'target': value} for value in ('/home/user/cod4/main', '/home/user/cod4/zone', runtime.PERSISTENT_HOME)],
         'command': ['+set', 'dedicated', '1', '+set', 'net_ip', '127.0.0.1',
-                    '+set', 'net_port', str(port), '+set', 'fs_homepath', runtime.PERSISTENT_HOME,
+                    '+set', 'net_port', str(port), '+set', 'developer', '1', '+set', 'developer_script', '1', '+set', 'fs_homepath', runtime.PERSISTENT_HOME,
                     '+exec', 'private.cfg']}
     adapted = runtime.adapt(service, 'qualification-only', 'zombies', fingerprint, fs_game, startup, maps, capacity)
     checks[f'{attempt}_readonly_config_retained'] = adapted['read_only'] is True

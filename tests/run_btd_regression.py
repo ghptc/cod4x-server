@@ -19,6 +19,7 @@ p = argparse.ArgumentParser(description=__doc__)
 for name in ('runtime', 'game', 'binary'):
     p.add_argument('--' + name, required=True, type=Path)
 p.add_argument('--fixed', action='store_true')
+p.add_argument('--reproduce-spawn-defect', action='store_true', help='Apply death guard only, expect the native missing-angle failure')
 p.add_argument('--scenario', choices=('expression', 'death', 'lifecycle'), required=True)
 a = p.parse_args()
 assert (a.runtime / '.bot-test-runtime').is_file()
@@ -41,6 +42,10 @@ source = source.replace('init()\r\n{', 'init()\r\n{\r\n thread btd_regression::m
 assert 'thread btd_regression::main();' in source
 out = mod / 'maps/mp/gametypes/_globallogic.gsx'
 out.parent.mkdir(parents=True, exist_ok=True); out.write_bytes(source.encode())
+if a.fixed and not a.reproduce_spawn_defect:
+    spawn = mod / btd.SPAWN_SCRIPT.replace('.gsc', '.gsx')
+    spawn.parent.mkdir(parents=True, exist_ok=True)
+    spawn.write_bytes(btd.spawn_overlay(ff.read_bytes(), lock['spawn_points_source_sha256']))
 fixture = (ROOT / 'tests/btd_regression.gsc').read_text()
 condition = btd.SAFE_DEATH_CONDITION if a.fixed else btd.DEATH_CONDITION
 fixture = fixture.replace('BTD_TEST_CONDITION', condition.replace('eInflictor', 'fixture'))
@@ -57,6 +62,29 @@ cmd = [str(home / 'cod4x18_dedrun'), '+set', 'dedicated', '1', '+set', 'net_ip',
        '+set', 'btd_test_scenario', a.scenario, '+exec', 'canonical-shared.cfg',
        '+exec', 'canonical-mode.cfg', '+map', 'mp_crash']
 logpath = home/'console.log'
+network_checks = {}
+def status():
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as channel:
+        channel.settimeout(3); channel.sendto(b'\xff'*4+b'getstatus\n',('127.0.0.1',port))
+        data=channel.recv(65535)
+    assert b'statusResponse' in data
+    fields=data.split(b'\n')[1].split(b'\\')
+    return dict(zip(fields[1::2],fields[2::2]))
+
+def admit(attempt):
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as channel:
+        channel.bind(('127.0.0.2',0));channel.settimeout(3)
+        channel.sendto(b'\xff'*4+b'getchallenge 123456',('127.0.0.1',port))
+        challenge=channel.recv(2048)[4:].decode().split()[1]
+        userinfo=f'connect "\\protocol\\21\\challenge\\{challenge}\\qport\\{24444+attempt}\\name\\ReconnectFixture\\rate\\25000\\snaps\\20"'
+        channel.sendto(b'\xff'*4+userinfo.encode(),('127.0.0.1',port))
+        assert b'connectResponse' in channel.recv(2048)
+    time.sleep(.2)
+    text=re.sub(r'\^[0-9]', '', logpath.read_text(errors='replace'))
+    slot=re.findall(r'CS_CONNECTED for ReconnectFixture num (\d+)',text)[-1]
+    proc.stdin.write(('clientkick '+slot+'\n').encode());proc.stdin.flush()
+    time.sleep(2)
+
 with logpath.open('w') as log:
     proc = subprocess.Popen(cmd, cwd=home, stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT)
     try:
@@ -68,6 +96,17 @@ with logpath.open('w') as log:
             proc.stdin.write(b'btd_test_result\nbtd_test_respawn\nbtd_test_zombie_spawn\nbtd_test_wave\n'); proc.stdin.flush()
             success = {'expression': 'expression_pass', 'death': 'death_callback_survived', 'lifecycle': 'lifecycle_pass'}[a.scenario]
             if '"'+success+'"' in text or re.search(r'"(?:spawn|respawn|zombie_spawn|wave)_failed"', text): break
+        if a.scenario == 'lifecycle' and '"lifecycle_pass"' in text and not a.reproduce_spawn_defect:
+            time.sleep(2)
+            for attempt in range(2):
+                admit(attempt); network_checks['udp_admission_'+str(attempt)]=True
+            proc.stdin.write(b'set btd_test_scenario idle\n');proc.stdin.flush()
+            for mapname in ('mp_strike','mp_crash'):
+                proc.stdin.write(('map '+mapname+'\n').encode());proc.stdin.flush()
+                time.sleep(3)
+                values=status()
+                assert values[b'mapname']==mapname.encode() and values[b'fs_game']==b'mods/btd_alpha_001' and values[b'g_gametype']==b'war' and values[b'sv_pure']==b'1'
+                network_checks['map_'+mapname]=True
     finally:
         if proc.poll() is None:
             proc.stdin.write(b'quit\n'); proc.stdin.flush()
@@ -76,7 +115,7 @@ with logpath.open('w') as log:
 text = re.sub(r'\^[0-9]', '', logpath.read_text(errors='replace'))
 error = bool(re.search(r'script (?:runtime|compile) error', text))
 result = {'evidence': str(home), 'scenario': a.scenario, 'fixed': a.fixed,
-          'runtime_error': error, 'gameplay_qualified': False,
+          'runtime_error': error, 'gameplay_qualified': False, 'network_checks': network_checks,
           'expression_pass': '"expression_pass"' in text,
           'death_callback_survived': '"death_callback_survived"' in text,
           'spawn_failed': '"spawn_failed"' in text,
@@ -87,5 +126,7 @@ result = {'evidence': str(home), 'scenario': a.scenario, 'fixed': a.fixed,
 (home/'results.json').write_text(json.dumps(result, indent=2)+'\n')
 print(json.dumps(result, indent=2))
 expected = result[{'expression':'expression_pass','death':'death_callback_survived','lifecycle':'lifecycle_pass'}[a.scenario]]
-if a.fixed: assert not error and expected, 'Fixed regression failed: '+str(home)
+if a.reproduce_spawn_defect:
+    assert error and 'type undefined is not a vector' in text, 'Spawn defect not reproduced: '+str(home)
+elif a.fixed: assert not error and expected, 'Fixed regression failed: '+str(home)
 else: assert error and "has unmatching types 'undefined' and 'string'" in text, 'Expected failure not reproduced: '+str(home)
