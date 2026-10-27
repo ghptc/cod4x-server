@@ -88,8 +88,11 @@ def navigation_overlay(fastfile, expected):
 
 ALLIED_SURVIVAL_SCRIPT = 'btd_gametypes/survival/_survival_logic.gsc'
 ALLIED_ZOMBIE_SCRIPT = 'k3/_zombie.gsc'
+ALLIED_AMMO_SCRIPT = 'btd_general/_ammo_drops.gsc'
 # Existing vendor protection is unconditional, independent of friendly-fire cvars.
 PLAYER_DAMAGE_GUARD = 'if(isPlayer(eAttacker) && eAttacker != self)\r\n\t\treturn;'
+AMMO_PICKUP_GUARD = '\t\tif(player.isammoing)\r\n\t\t\tcontinue;'
+AMMO_FIRST_USE = '\r\n\t\tif (!isdefined(player.hasntfullammo)) player.hasntfullammo = true;'
 
 
 def replace_exact(source, old, new, count=1):
@@ -108,8 +111,7 @@ def allied_overlays(fastfile, lock):
     # Native registration precedes threaded connected listeners. Identify only
     # actual native bots before the vendor profile-integrity check can run.
     global_source = replace_exact(global_source, 'Callback_PlayerConnect()\r\n{',
-        'Callback_PlayerConnect()\r\n{\r\n if (self.isbot) { self.pers["isBot"] = true;'
-        ' if (!isdefined(self.hasntfullammo)) self.hasntfullammo = true; }')
+        'Callback_PlayerConnect()\r\n{\r\n if (self.isbot) self.pers["isBot"] = true;')
     # Vendor spawn waits outside its disconnect endon while a wave blocks joins.
     # Arm cancellation before that wait so kicking a dead ally cannot resume it.
     global_source = replace_exact(global_source, 'spawnPlayer()\r\n{',
@@ -132,9 +134,19 @@ def allied_overlays(fastfile, lock):
     block = replace_exact(zombie[begin:end], 'getentarray("player","classname")',
                           'btd_allies::human_players()')
     zombie = zombie[:begin] + block + zombie[end:]
+    ammo = raw_source(fastfile, ALLIED_AMMO_SCRIPT, lock['allied_ammo_source_sha256'])
+    # Missing initial eligibility crashed the first pickup for any survivor.
+    # Preserve a defined false cooldown; only vendor pickup logic grants ammo.
+    ammo = replace_exact(ammo, AMMO_PICKUP_GUARD, AMMO_PICKUP_GUARD + AMMO_FIRST_USE)
+    # The vendor cooldowns resume after a wait and touch the player entity.
+    # Cancel both on disconnect so human reconnect and ally eviction are safe.
+    for function in ('ammoingwait', 'hashadammo'):
+        ammo = replace_exact(ammo, function + '()\r\n{',
+                             function + '()\r\n{\r\n self endon("disconnect");')
     return {SCRIPT.replace('.gsc', '.gsx'): global_source.encode(),
             ALLIED_SURVIVAL_SCRIPT.replace('.gsc', '.gsx'): survival.encode(),
             ALLIED_ZOMBIE_SCRIPT.replace('.gsc', '.gsx'): zombie.encode(),
+            ALLIED_AMMO_SCRIPT.replace('.gsc', '.gsx'): ammo.encode(),
             'btd_allies.gsx': (ROOT / 'bots/btd_allies.gsc').read_bytes()}
 
 
@@ -216,6 +228,7 @@ def prepare(source, headers, binary, output, allies=False):
         record['overlays'].update({name: digest(mod / name) for name in extra_overlays})
         record['allied_survival_source_sha256'] = lock['allied_survival_source_sha256']
         record['allied_zombie_source_sha256'] = lock['allied_zombie_source_sha256']
+        record['allied_ammo_source_sha256'] = lock['allied_ammo_source_sha256']
         record['allied_bots'] = True
         record['qualification'] = 'experimental native allied integration; operator gameplay qualification required'
     (output / 'inputs.json').write_text(json.dumps(record, indent=2) + '\n')

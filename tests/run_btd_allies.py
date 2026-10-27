@@ -207,6 +207,12 @@ with logpath.open('w') as output:
         # Reconnect and capacity exercise actual UDP admission, not script clients.
         replacement = admit(2)
         time.sleep(2)
+        admitted_replacement = snapshot('replacement_waiting')
+        for attempt in range(90):
+            if admitted_replacement['human_alive'] == 2: break
+            time.sleep(1)
+            admitted_replacement = snapshot('replacement_spawn_' + str(attempt))
+        checks['replacement_respects_join_window'] = admitted_replacement['human_alive'] == 2
         rcon('clientkick ' + str(human))
         human = replacement
         time.sleep(3)

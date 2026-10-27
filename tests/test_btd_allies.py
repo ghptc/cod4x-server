@@ -28,12 +28,15 @@ class AlliedOverlayTests(unittest.TestCase):
                 'Callback_PlayerConnect()\r\n{}\r\nspawnPlayer()\r\n{}\r\n'
                 'updateTeamStatus()\r\n{\r\nplayers = level.players;\r\n}\r\nisValidClass(x){}',
             btd.ALLIED_SURVIVAL_SCRIPT: ('players = getentarray("player","classname");\r\n' * 4),
+            btd.ALLIED_AMMO_SCRIPT: btd.AMMO_PICKUP_GUARD + '\r\nammoingwait()\r\n{wait 0.75; self.isammoing=false;}\r\n'
+                'hashadammo()\r\n{wait level.grace_time; self.hasntfullammo=true;}',
             btd.ALLIED_ZOMBIE_SCRIPT: 'other(){getentarray("player","classname");}\r\n'
                 'monitorplayers()\r\n{\r\nplayers=getentarray("player","classname");\r\n}\r\nmonitorme(){}',
         }
         names = {btd.SCRIPT: 'death_callback_source_sha256',
                  btd.ALLIED_SURVIVAL_SCRIPT: 'allied_survival_source_sha256',
-                 btd.ALLIED_ZOMBIE_SCRIPT: 'allied_zombie_source_sha256'}
+                 btd.ALLIED_ZOMBIE_SCRIPT: 'allied_zombie_source_sha256',
+                 btd.ALLIED_AMMO_SCRIPT: 'allied_ammo_source_sha256'}
         lock = {names[name]: hashlib.sha256(source.encode()).hexdigest() for name, source in sources.items()}
         return sources, lock
 
@@ -44,8 +47,7 @@ class AlliedOverlayTests(unittest.TestCase):
         self.assertIn(btd.SAFE_DEATH_CONDITION, global_source)
         self.assertIn(btd.PLAYER_DAMAGE_GUARD, global_source)
         self.assertIn('spawnPlayer()\r\n{\r\n self endon("disconnect");', global_source)
-        self.assertIn('if (self.isbot) { self.pers["isBot"] = true;', global_source)
-        self.assertIn('if (!isdefined(self.hasntfullammo)) self.hasntfullammo = true;', global_source)
+        self.assertIn('if (self.isbot) self.pers["isBot"] = true;', global_source)
         self.assertEqual(global_source.count('thread btd_allies::init();'), 1)
         self.assertIn('players = btd_allies::human_players();', global_source)
         survival = outputs[btd.ALLIED_SURVIVAL_SCRIPT.replace('.gsc', '.gsx')].decode()
@@ -54,6 +56,23 @@ class AlliedOverlayTests(unittest.TestCase):
         self.assertIn('other(){getentarray("player","classname");}', zombie)
         self.assertIn('players=btd_allies::human_players();', zombie)
         self.assertEqual(outputs['btd_allies.gsx'], (ROOT / 'bots/btd_allies.gsc').read_bytes())
+
+    def test_ammo_cooldowns_cancel_before_their_waits(self):
+        sources, lock = self.fixture()
+        outputs = btd.allied_overlays(fastfile(sources), lock)
+        ammo = outputs[btd.ALLIED_AMMO_SCRIPT.replace('.gsc', '.gsx')].decode()
+        self.assertEqual(ammo.count('self endon("disconnect");'), 2)
+        self.assertEqual(ammo.replace('\r\n self endon("disconnect");', '').replace(btd.AMMO_FIRST_USE, ''), sources[btd.ALLIED_AMMO_SCRIPT])
+        self.assertEqual(ammo.count(btd.AMMO_FIRST_USE), 1)
+        self.assertIn(btd.AMMO_PICKUP_GUARD + btd.AMMO_FIRST_USE, ammo)
+        self.assertIn('ammoingwait()\r\n{\r\n self endon("disconnect");wait 0.75;', ammo)
+        self.assertIn('hashadammo()\r\n{\r\n self endon("disconnect");wait level.grace_time;', ammo)
+
+    def test_unpinned_ammo_source_rejected(self):
+        sources, lock = self.fixture()
+        sources[btd.ALLIED_AMMO_SCRIPT] += '// changed'
+        with self.assertRaisesRegex(ValueError, 'hash mismatch'):
+            btd.allied_overlays(fastfile(sources), lock)
 
     def test_missing_vendor_human_damage_guard_rejected(self):
         sources, lock = self.fixture()

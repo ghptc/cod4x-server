@@ -67,6 +67,7 @@ class BtdPreparation(unittest.TestCase):
             btd.SPAWN_SCRIPT: self.spawn_raw,
             btd.NAVIGATION_SCRIPT: self.navigation_raw,
             btd.ALLIED_SURVIVAL_SCRIPT: b'getentarray("player","classname");' * 4,
+            btd.ALLIED_AMMO_SCRIPT: btd.AMMO_PICKUP_GUARD.encode() + b'\r\nammoingwait()\r\n{}\r\nhashadammo()\r\n{}',
             btd.ALLIED_ZOMBIE_SCRIPT: b'monitorplayers()\r\n{getentarray("player","classname");}\r\nmonitorme(){}',
         }
         payload = b'fixture!'
@@ -78,13 +79,14 @@ class BtdPreparation(unittest.TestCase):
         lock['files']['btd_alpha_001/mod.ff'] = btd.digest(self.source / 'btd_alpha_001/mod.ff')
         for script, key in [(btd.SCRIPT, 'death_callback_source_sha256'),
                             (btd.ALLIED_SURVIVAL_SCRIPT, 'allied_survival_source_sha256'),
-                            (btd.ALLIED_ZOMBIE_SCRIPT, 'allied_zombie_source_sha256')]:
+                            (btd.ALLIED_ZOMBIE_SCRIPT, 'allied_zombie_source_sha256'),
+                            (btd.ALLIED_AMMO_SCRIPT, 'allied_ammo_source_sha256')]:
             lock[key] = hashlib.sha256(sources[script]).hexdigest()
         lock_path.write_text(json.dumps(lock))
         (self.root / 'bots/btd_allies.gsc').write_text('// synthetic authored adapter')
         record = btd.prepare(self.source, self.headers, self.binary, self.output, allies=True)
         self.assertIs(record['allied_bots'], True)
-        self.assertEqual(len(record['overlays']), 6)
+        self.assertEqual(len(record['overlays']), 7)
         self.assertEqual(record['allied_zombie_source_sha256'], lock['allied_zombie_source_sha256'])
         for name, expected in record['overlays'].items():
             self.assertEqual(btd.digest(self.output / 'mods/btd_alpha_001' / name), expected)

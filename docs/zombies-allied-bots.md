@@ -19,7 +19,10 @@ No original inputs are edited or proprietary source files committed.
 The independent authored controller uses native client inputs and reads BTD's
 waypoint graph. It never initializes Bot Warfare or writes enemy pathfinding
 state. Bots follow living human survivors and target only living vendor zombies.
-Vendor loadouts, ammunition, damage, zombie construction and wave spawning remain
+First-use ammo-drop eligibility is initialized only when absent for any survivor.
+The vendor pickup and grace-period cooldown still perform restocking. Both ammo
+cooldown threads cancel on disconnect before resuming into a removed entity. Vendor loadouts, ammunition,
+damage, zombie construction and wave spawning remain
 authoritative. There are no scripted enemy damage/kill shortcuts.
 
 The native manager gates creation on the exact BTD mod, `war`, pure mode and
@@ -67,7 +70,7 @@ per-profile population.
 Original fastfile SHA-256 remains
 `50911fdd0273b50e26983723619881acfaed4aa65f4d91a799a341464c2224a6`.
 All private source identities are pinned in `tools/btd/dependencies.json`.
-Allied preparation declares exactly six overlays with hashes; packaging checks
+Allied preparation declares exactly seven overlays with hashes; packaging checks
 those identities and rejects undeclared source files and symlinks. The existing
 three-overlay recipe, licenses, original configuration and eight administrative
 headers remain preserved. `sv_pure=1` stays mandatory.
@@ -117,7 +120,7 @@ The pre-commit native executable SHA-256 is
 `2aac8c013b234a4dee8272bcb8e3fc09f5df3e35a7f8f936ccf0bb464e607b70`.
 Existing linker text-relocation warnings remain; compilation succeeds.
 
-- Engine unit suite: 68 tests, passed with one optional public-client checkout
+- Engine unit suite: 70 tests, passed with one optional public-client checkout
   skipped (`COD4X_CLIENT_SOURCE` unset). Native execution requires an unsandboxed
   local test process because sandbox restrictions cause SIGSYS/socket failures.
 - Native population policy, linked map rotation and map voting suites passed.
@@ -131,7 +134,7 @@ Existing linker text-relocation warnings remain; compilation succeeds.
   This baseline suite does not independently certify allied obstacle traversal.
 - Companion packaging: all 50 Python tests and the full mocked Operations suite
   passed. Actual new private allied preparation plus packaging passed, retaining
-  original assets and the exact six-overlay manifest.
+  original assets and the exact seven-overlay manifest.
 - Separate architecture, gameplay, native-testing and independent-review agents
   participated. Final source review found no blocking issue; native evidence and
   operator qualification are distinct gates.
@@ -140,3 +143,8 @@ Earlier native runs remain preserved, including scriptadmin connection rejection
 (`/tmp/btd-five-allies-q1yrx1ow`), headless transport/visibility problems
 (`/tmp/btd-five-allies-ecze7vy_`) and an old-fixture wave-respawn expectation
 (`/tmp/btd-five-allies-b2dxxb4n`). Failed runs are not qualification evidence.
+
+A further rejected run, `/tmp/btd-five-allies-kzstcxhj`, exposed missing
+first-use vendor ammo-drop eligibility during native capacity refill; the
+undefined-only pickup initialization above addresses that failure. A subsequent
+removed-player cooldown error required the pinned seventh ammo safety overlay.
