@@ -136,8 +136,13 @@ def prepare(source, headers, binary, output):
     shutil.copy2(binary, output / 'cod4x18_dedrun')
     (output / 'cod4x18_dedrun').chmod(0o755)
     rotation = (source / 'btd_alpha_001/btd_maprotation.cfg').read_text()
+    # The pinned navigation overlay above repairs Killhouse's terminal marker.
+    # Advertise it only after verified preparation; retain vendor map order/bytes.
+    maps = re.findall(r'\bmap (mp_[a-z0-9_]+)', rotation)
+    if 'mp_killhouse' not in maps:
+        maps.append('mp_killhouse')
     record = {'asset_type': 'btd-alpha-001', 'fs_game': 'mods/btd_alpha_001',
-              'maps': re.findall(r'\bmap (mp_[a-z0-9_]+)', rotation),
+              'maps': maps,
               'binary_sha256': binary_hash, 'headers': header_lock,
               'assets': {Path(k).name: v for k, v in lock['files'].items()
                          if k.startswith('btd_alpha_001/') and Path(k).name != 'server.cfg'},
@@ -149,7 +154,7 @@ def prepare(source, headers, binary, output):
               'spawn_points_source_sha256': lock['spawn_points_source_sha256'],
               'navigation_source_sha256': lock['navigation_source_sha256'],
               'dependency_lock_sha256': digest(ROOT / 'tools/btd/dependencies.json'),
-              'qualification': 'original package map list; gameplay qualification is separate'}
+              'qualification': 'original package maps plus repaired Killhouse; gameplay qualification is separate'}
     (output / 'inputs.json').write_text(json.dumps(record, indent=2) + '\n')
     return record
 
