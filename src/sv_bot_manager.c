@@ -14,6 +14,7 @@ static cvar_t *bot_enable, *bot_ai_ready, *bot_fill_limit, *bot_skill;
 static cvar_t *btd_allies_enable, *btd_allies_limit, *bot_use_names;
 static bot_fill_state_t fill_state = BOT_FILL_ACTIVE;
 static int next_fill;
+static unsigned int next_name_index;
 
 static int BotCount(void)
 {
@@ -71,7 +72,9 @@ static qboolean BotNameUsed(const char *name)
 static qboolean BotPoolName(char name[BOT_NAME_BYTES])
 {
     fileHandle_t file;
-    char data[BOT_NAMES_BYTES], candidate[BOT_NAME_BYTES];
+    char data[BOT_NAMES_BYTES], candidate[BOT_NAME_BYTES], fallback[BOT_NAME_BYTES];
+    unsigned int count = 0, index = 0, start, fallback_index = 0;
+    qboolean have_fallback = qfalse;
     const char *cursor = data;
     int length = FS_SV_FOpenFileRead("scriptdata/botnames.txt", &file);
     if (!file) return qfalse;
@@ -84,11 +87,30 @@ static qboolean BotPoolName(char name[BOT_NAME_BYTES])
         return qfalse;
     }
     FS_FCloseFile(file);
+    while (BotName_Next(&cursor, data + length, candidate)) ++count;
+    if (!count) return qfalse;
+    start = next_name_index % count;
+    cursor = data;
     while (BotName_Next(&cursor, data + length, candidate)) {
         ClientCleanName(candidate, name, BOT_NAME_BYTES, qfalse);
-        if (!BotNameUsed(name)) return qtrue;
+        if (!BotNameUsed(name)) {
+            if (index >= start) {
+                next_name_index = index + 1;
+                return qtrue;
+            }
+            if (!have_fallback) {
+                Q_strncpyz(fallback, name, sizeof(fallback));
+                fallback_index = index;
+                have_fallback = qtrue;
+            }
+        }
+        ++index;
     }
-    return qfalse;
+    if (have_fallback) {
+        Q_strncpyz(name, fallback, BOT_NAME_BYTES);
+        next_name_index = fallback_index + 1;
+    }
+    return have_fallback;
 }
 
 static qboolean BotAddOne(void)

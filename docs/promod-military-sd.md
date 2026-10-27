@@ -12,7 +12,7 @@ Engine population management consumes Bot Warfare's existing root
 the 15-name military pool; the workspace copies it and includes its content in
 the configuration fingerprint. Assignment happens only in `BotAddOne`, before
 `SV_AddBotClient`. Existing bots and humans are never renamed. Round restarts
-retain native client userinfo. Subsequent admissions take the first unused name,
+retain native client userinfo. Subsequent admissions rotate through the unused names using a process cursor (reset on process restart),
 including collision checks against humans after native name cleaning, ignoring
 case. Missing, invalid, oversized or exhausted pools use unique numbered Promod
 fallbacks. Name input is bounded to 8192 bytes and 31 ASCII display bytes per
@@ -91,7 +91,7 @@ remained, with one human and eleven bots. Human priority/Ready Up/authentication
 remain covered by existing regressions; synthetic peers do not replace clients.
 
 Local totals: 83 engine Python tests (one existing optional skip), two catalog
-tests, 52 workspace tests, native population policy/rotation/voting and the
+tests, 53 workspace tests, native population policy/rotation/voting and the
 workspace operations mocks pass. Existing hosted Configuration/Operations and
 engine Linux/Windows CI passed on the initial draft heads; required checks must
 also pass on the final heads. No workflow or protection was changed.

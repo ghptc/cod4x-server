@@ -133,6 +133,13 @@ try:
             assert 'humans=1' in status and 'bots=11' in status, status
             result['duplicate_overflow_human_collision_and_admin'] = True
             rcon('runtime_fixture 0 bot')
+        else:
+            rcon('bot_kick 3'); time.sleep(.3)
+            rcon('bot_add 3'); time.sleep(1)
+            after = rcon('status')
+            assert all(after.lower().count(name.lower()) == 1 for name in names[3:15]), after
+            assert all(name not in after for name in names[:3]), after
+            result['all_fifteen_names_rotate_across_admissions'] = True
     result['passed'] = True
 finally:
     if proc.poll() is None:
