@@ -60,6 +60,37 @@ class BtdPreparation(unittest.TestCase):
     def prepare(self):
         return btd.prepare(self.source, self.headers, self.binary, self.output)
 
+    def test_optional_allied_manifest_and_overlay_hashes(self):
+        sources = {
+            btd.SCRIPT: ('init()\r\n{}\r\nCallback_PlayerConnect()\r\n{}\r\nspawnPlayer()\r\n{}\r\n' +
+                         btd.DEATH_CONDITION + '\r\n' + btd.PLAYER_DAMAGE_GUARD + '\r\nupdateTeamStatus()\r\n{players = level.players;}\r\nisValidClass(x){}').encode(),
+            btd.SPAWN_SCRIPT: self.spawn_raw,
+            btd.NAVIGATION_SCRIPT: self.navigation_raw,
+            btd.ALLIED_SURVIVAL_SCRIPT: b'getentarray("player","classname");' * 4,
+            btd.ALLIED_AMMO_SCRIPT: btd.AMMO_PICKUP_GUARD.encode() + b'\r\nammoingwait()\r\n{}\r\nhashadammo()\r\n{}',
+            btd.ALLIED_ZOMBIE_SCRIPT: b'monitorplayers()\r\n{getentarray("player","classname");}\r\nmonitorme(){}',
+        }
+        payload = b'fixture!'
+        for name, raw in sources.items():
+            payload += struct.pack('<I', len(raw)) + b'\xff' * 4 + name.encode() + b'\0' + raw + b'\0'
+        (self.source / 'btd_alpha_001/mod.ff').write_bytes(b'fixture-head' + zlib.compress(payload))
+        lock_path = self.root / 'tools/btd/dependencies.json'
+        lock = json.loads(lock_path.read_text())
+        lock['files']['btd_alpha_001/mod.ff'] = btd.digest(self.source / 'btd_alpha_001/mod.ff')
+        for script, key in [(btd.SCRIPT, 'death_callback_source_sha256'),
+                            (btd.ALLIED_SURVIVAL_SCRIPT, 'allied_survival_source_sha256'),
+                            (btd.ALLIED_ZOMBIE_SCRIPT, 'allied_zombie_source_sha256'),
+                            (btd.ALLIED_AMMO_SCRIPT, 'allied_ammo_source_sha256')]:
+            lock[key] = hashlib.sha256(sources[script]).hexdigest()
+        lock_path.write_text(json.dumps(lock))
+        (self.root / 'bots/btd_allies.gsc').write_text('// synthetic authored adapter')
+        record = btd.prepare(self.source, self.headers, self.binary, self.output, allies=True)
+        self.assertIs(record['allied_bots'], True)
+        self.assertEqual(len(record['overlays']), 7)
+        self.assertEqual(record['allied_zombie_source_sha256'], lock['allied_zombie_source_sha256'])
+        for name, expected in record['overlays'].items():
+            self.assertEqual(btd.digest(self.output / 'mods/btd_alpha_001' / name), expected)
+
     def test_original_assets_not_modified_or_decompiled(self):
         record = self.prepare()
         self.assertEqual(record['maps'], ['mp_crash', 'mp_killhouse'])

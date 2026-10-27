@@ -86,7 +86,71 @@ def navigation_overlay(fastfile, expected):
                           KILLHOUSE_TERMINATOR_REPAIR + NAVIGATION_END_CHECK).encode('latin-1')
 
 
-def prepare(source, headers, binary, output):
+ALLIED_SURVIVAL_SCRIPT = 'btd_gametypes/survival/_survival_logic.gsc'
+ALLIED_ZOMBIE_SCRIPT = 'k3/_zombie.gsc'
+ALLIED_AMMO_SCRIPT = 'btd_general/_ammo_drops.gsc'
+# Existing vendor protection is unconditional, independent of friendly-fire cvars.
+PLAYER_DAMAGE_GUARD = 'if(isPlayer(eAttacker) && eAttacker != self)\r\n\t\treturn;'
+AMMO_PICKUP_GUARD = '\t\tif(player.isammoing)\r\n\t\t\tcontinue;'
+AMMO_FIRST_USE = '\r\n\t\tif (!isdefined(player.hasntfullammo)) player.hasntfullammo = true;'
+
+
+def replace_exact(source, old, new, count=1):
+    if source.count(old) != count:
+        raise ValueError('Unexpected pinned BTD allied integration anchor: ' + old)
+    return source.replace(old, new)
+
+
+def allied_overlays(fastfile, lock):
+    """Private vendor derivatives; original source bytes preserved except guarded edits."""
+    global_source = death_overlay(fastfile, lock['death_callback_source_sha256']).decode('utf-8')
+    if global_source.count(PLAYER_DAMAGE_GUARD) != 1:
+        raise ValueError('Missing pinned BTD player damage protection')
+    global_source = replace_exact(global_source, 'init()\r\n{',
+        'init()\r\n{\r\n thread btd_allies::init();')
+    # Native registration precedes threaded connected listeners. Identify only
+    # actual native bots before the vendor profile-integrity check can run.
+    global_source = replace_exact(global_source, 'Callback_PlayerConnect()\r\n{',
+        'Callback_PlayerConnect()\r\n{\r\n if (self.isbot) self.pers["isBot"] = true;')
+    # Vendor spawn waits outside its disconnect endon while a wave blocks joins.
+    # Arm cancellation before that wait so kicking a dead ally cannot resume it.
+    global_source = replace_exact(global_source, 'spawnPlayer()\r\n{',
+        'spawnPlayer()\r\n{\r\n self endon("disconnect");')
+    # Stock game-event survival accounting must also exclude native clients.
+    begin = global_source.index('updateTeamStatus()\r\n{')
+    end = global_source.index('\r\nisValidClass(', begin)
+    block = global_source[begin:end]
+    block = replace_exact(block, 'players = level.players;', 'players = btd_allies::human_players();')
+    global_source = global_source[:begin] + block + global_source[end:]
+    survival = raw_source(fastfile, ALLIED_SURVIVAL_SCRIPT,
+                          lock['allied_survival_source_sha256'])
+    survival = replace_exact(survival, 'getentarray("player","classname")',
+                             'btd_allies::human_players()', count=4)
+    zombie = raw_source(fastfile, ALLIED_ZOMBIE_SCRIPT,
+                        lock['allied_zombie_source_sha256'])
+    # Only the elimination monitor changes; targeting/damage/spawning remain vendor-owned.
+    begin = zombie.index('monitorplayers()\r\n{')
+    end = zombie.index('\r\nmonitorme()', begin)
+    block = replace_exact(zombie[begin:end], 'getentarray("player","classname")',
+                          'btd_allies::human_players()')
+    zombie = zombie[:begin] + block + zombie[end:]
+    ammo = raw_source(fastfile, ALLIED_AMMO_SCRIPT, lock['allied_ammo_source_sha256'])
+    # Missing initial eligibility crashed the first pickup for any survivor.
+    # Preserve a defined false cooldown; only vendor pickup logic grants ammo.
+    ammo = replace_exact(ammo, AMMO_PICKUP_GUARD, AMMO_PICKUP_GUARD + AMMO_FIRST_USE)
+    # The vendor cooldowns resume after a wait and touch the player entity.
+    # Cancel both on disconnect so human reconnect and ally eviction are safe.
+    for function in ('ammoingwait', 'hashadammo'):
+        ammo = replace_exact(ammo, function + '()\r\n{',
+                             function + '()\r\n{\r\n self endon("disconnect");')
+    return {SCRIPT.replace('.gsc', '.gsx'): global_source.encode(),
+            ALLIED_SURVIVAL_SCRIPT.replace('.gsc', '.gsx'): survival.encode(),
+            ALLIED_ZOMBIE_SCRIPT.replace('.gsc', '.gsx'): zombie.encode(),
+            ALLIED_AMMO_SCRIPT.replace('.gsc', '.gsx'): ammo.encode(),
+            'btd_allies.gsx': (ROOT / 'bots/btd_allies.gsc').read_bytes()}
+
+
+def prepare(source, headers, binary, output, allies=False):
     lock = json.loads((ROOT / 'tools/btd/dependencies.json').read_text())
     header_lock = json.loads((ROOT / 'bots/dependencies.json').read_text())['integrity_headers']
     for base, expected in ((source, lock['files']), (headers, header_lock)):
@@ -102,6 +166,7 @@ def prepare(source, headers, binary, output):
                           lock['spawn_points_source_sha256'])
     navigation = navigation_overlay((source / 'btd_alpha_001/mod.ff').read_bytes(),
                                     lock['navigation_source_sha256'])
+    extra_overlays = allied_overlays((source / 'btd_alpha_001/mod.ff').read_bytes(), lock) if allies else {}
     binary_hash = digest(binary)
     if output.exists():
         raise ValueError('Output must be a new directory; existing runtimes are never overwritten')
@@ -126,6 +191,10 @@ def prepare(source, headers, binary, output):
     navigation_path = mod / NAVIGATION_SCRIPT.replace('.gsc', '.gsx')
     navigation_path.parent.mkdir(parents=True, exist_ok=True)
     navigation_path.write_bytes(navigation)
+    for name, data in extra_overlays.items():
+        target = mod / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
     notices = output / 'licenses'
     notices.mkdir()
     shutil.copy2(source / 'readme.txt', notices / 'Before-the-Dawn-readme.txt')
@@ -155,6 +224,13 @@ def prepare(source, headers, binary, output):
               'navigation_source_sha256': lock['navigation_source_sha256'],
               'dependency_lock_sha256': digest(ROOT / 'tools/btd/dependencies.json'),
               'qualification': 'original package maps plus repaired Killhouse; gameplay qualification is separate'}
+    if allies:
+        record['overlays'].update({name: digest(mod / name) for name in extra_overlays})
+        record['allied_survival_source_sha256'] = lock['allied_survival_source_sha256']
+        record['allied_zombie_source_sha256'] = lock['allied_zombie_source_sha256']
+        record['allied_ammo_source_sha256'] = lock['allied_ammo_source_sha256']
+        record['allied_bots'] = True
+        record['qualification'] = 'experimental native allied integration; operator gameplay qualification required'
     (output / 'inputs.json').write_text(json.dumps(record, indent=2) + '\n')
     return record
 
@@ -163,9 +239,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('source', 'headers', 'binary', 'output'):
         parser.add_argument('--' + name, required=True, type=Path)
+    parser.add_argument('--allies', action='store_true', help='Opt in to five native allied soldiers; requires compatible packaging')
     args = parser.parse_args()
     try:
-        record = prepare(args.source, args.headers, args.binary, args.output)
+        record = prepare(args.source, args.headers, args.binary, args.output, args.allies)
     except (OSError, ValueError) as exc:
         parser.exit(1, f'BTD preparation failed: {exc}\n')
     print(json.dumps({'runtime': str(args.output), 'maps': record['maps']}, indent=2))
