@@ -28,6 +28,11 @@ main()
         return;
     }
     setdvar("btd_test_result", "spawned");
+    if (getdvar("btd_test_scenario") == "classic")
+    {
+        player classic();
+        return;
+    }
     wait 1;
     player suicide();
     wait 2;
@@ -69,4 +74,56 @@ main()
     setdvar("btd_test_wave", "passed");
     kick(player getentitynumber());
     setdvar("btd_test_result", "lifecycle_pass");
+}
+
+classic()
+{
+    // Run the shipped dispatchers. Zero must suppress both independent systems.
+    self btd_general\_anti_camp_time::main();
+    if (isdefined(self.campingtime))
+    {
+        setdvar("btd_test_result", "classic_timer_enabled");
+        return;
+    }
+    triggers = getentarray("trigger_radius", "classname");
+    for (i = 0; i < triggers.size; i++)
+    {
+        if (isdefined(triggers[i].goto))
+        {
+            setdvar("btd_test_result", "classic_teleport_enabled");
+            return;
+        }
+    }
+    self freezecontrols(true);
+    // Crash's helicopter is one of the vendor's explicitly blocked positions.
+    self setorigin((996, 584, 322));
+    wait 2;
+    start = self.origin;
+    setdvar("btd_test_classic_height", start[2]);
+    if (start[2] < 230 || distance2d(start, (996, 584, 322)) > 35)
+    {
+        setdvar("btd_test_result", "classic_position_failed");
+        return;
+    }
+    health = self.health;
+    level.status = "play";
+    // More than twice the accelerated camping timeout; no zombies spawn yet.
+    wait 6;
+    if (!isalive(self) || self.sessionstate != "playing" || self.health < health ||
+        isdefined(self.campingtime))
+    {
+        setdvar("btd_test_result", "classic_camping_failed");
+        return;
+    }
+    if (distance(start, self.origin) > 8)
+    {
+        setdvar("btd_test_result", "classic_position_failed");
+        return;
+    }
+    if (getdvar("btd_msg2") != "^7Server admins are ^4pitta")
+    {
+        setdvar("btd_test_result", "classic_message_failed");
+        return;
+    }
+    setdvar("btd_test_result", "classic_pass");
 }
