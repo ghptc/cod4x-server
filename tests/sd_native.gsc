@@ -34,7 +34,7 @@ init()
     }
     setdvar("sd_test_pickup", 1);
     plant = level.bombzones[0];
-    attacker setorigin(plant.curorigin + (50,50,5));
+    attacker fixture_place(plant);
     wait 0.5;
     attacker botaction("+activate");
     wait 1;
@@ -66,7 +66,7 @@ init()
         setdvar("sd_test_result", "pickup_failed");
         return;
     }
-    attacker setorigin(plant.curorigin + (50,50,5));
+    attacker fixture_place(plant);
     wait 0.5;
     began = gettime();
     attacker botaction("+activate");
@@ -82,7 +82,7 @@ init()
     setdvar("sd_test_planted", 1);
     wait 0.2;
     defuse = level.defuseobject;
-    defender setorigin(defuse.curorigin + (0,0,5));
+    defender fixture_place(defuse);
     wait 0.5;
     defender botaction("+activate");
     wait 1;
@@ -108,7 +108,7 @@ init()
     for (i = 0; i < players.size; i++)
         if (players[i].pers["team"] == game["defenders"] && isalive(players[i]))
         { defender = players[i]; break; }
-    defender setorigin(defuse.curorigin + (0,0,5));
+    defender fixture_place(defuse);
     wait 0.5;
     began = gettime();
     level thread record_defuse(defender, defuse, began);
@@ -134,4 +134,23 @@ record_defuse(defender, object, began)
         setdvar("sd_test_result", "passed");
     else
         setdvar("sd_test_result", "native_defuse_failed");
+}
+
+// Find grounded trigger contact for fixture setup without altering native state.
+fixture_place(object)
+{
+    offsets = [];
+    offsets[0] = (50,50,0);
+    offsets[1] = (0,0,0);
+    offsets[2] = (-50,-50,0);
+    offsets[3] = (-50,50,0);
+    offsets[4] = (50,-50,0);
+    for (i = 0; i < offsets.size; i++)
+    {
+        origin = object.curorigin + offsets[i];
+        trace = bullettrace(origin + (0,0,128), origin - (0,0,512), false, self);
+        self setorigin(trace["position"] + (0,0,4));
+        wait 0.5;
+        if (self isonground() && self istouching(object.trigger)) return;
+    }
 }

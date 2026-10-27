@@ -20,6 +20,7 @@ p.add_argument('--runtime', required=True, type=Path)
 p.add_argument('--game', required=True, type=Path)
 p.add_argument('--names', required=True, type=Path)
 p.add_argument('--scenario', choices=('native', 'navigation'), default='native')
+p.add_argument('--allocation-fixture', action='store_true')
 p.add_argument('--map', default='mp_crash')
 a = p.parse_args()
 assert a.map in json.loads((a.runtime / 'inputs.json').read_text())['maps']
@@ -32,6 +33,13 @@ for name in ('main', 'zone'):
 shutil.copy2(ROOT / 'bin/cod4x18_dedrun', home / 'cod4x18_dedrun')
 (home / 'scriptdata').mkdir()
 shutil.copy2(a.names, home / 'scriptdata/botnames.txt')
+if a.allocation_fixture:
+    (home / 'scriptdata/botnames.txt').write_text(
+        'Capt. Price\ncapt. price\nCapt. Price\nSoap MacTavish\nGaz\n'
+        'Bad;quit\nBad\\name\n^1Color\n' + 'x' * 32 + '\n')
+    (home / 'plugins').mkdir()
+    subprocess.run(['cc', '-m32', '-shared', '-fPIC', str(ROOT / 'tests/promod_runtime_plugin.c'),
+                    '-o', str(home / 'plugins/runtime_test.so')], check=True)
 mod = home / 'mods/pml220'
 lock = json.loads((ROOT / 'bots/dependencies.json').read_text())
 for directory, expected in [(mod, lock['promod']['files']),
@@ -61,7 +69,11 @@ cmd = [str(home / 'cod4x18_dedrun'), '+set', 'dedicated', '1',  '+set', 'net_ip'
        '+set', 'fs_game', 'mods/pml220', '+set', 'sv_pure', '1', '+set', 'sv_maxclients', '12',
        '+set', 'fs_localizedHeadersPath', str(home / 'integrity'), '+exec', 'qualification.cfg', '+map_rotate']
 proc = subprocess.Popen(cmd, cwd=home, stdin=subprocess.PIPE, stdout=output, stderr=subprocess.STDOUT)
-result = {'map': a.map, 'scenario': a.scenario, 'fixture_positioning': a.scenario == 'native', 'real_client_qualified': False}
+result = {'engine_revision': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+          'binary_sha256': hashlib.sha256((home / 'cod4x18_dedrun').read_bytes()).hexdigest(),
+          'dependency_lock_sha256': hashlib.sha256((ROOT / 'bots/dependencies.json').read_bytes()).hexdigest(),
+          'prepared_inputs': json.loads((a.runtime / 'inputs.json').read_text()),
+          'map': a.map, 'scenario': a.scenario, 'fixture_positioning': a.scenario == 'native', 'real_client_qualified': False}
 def rcon(command):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as channel:
         channel.settimeout(2)
@@ -93,7 +105,9 @@ try:
     result['pure'] = '"1"' in rcon('sv_pure')
     assert result['pure'], 'purity lost'
     result['status'] = rcon('status')
-    names = a.names.read_text().splitlines()
+    names = (['Capt. Price', 'Soap MacTavish', 'Gaz'] +
+             [f'[BOT] Promod {n:02d}' for n in range(1, 10)]
+             if a.allocation_fixture else a.names.read_text().splitlines())
     active_names = [name for name in names if name in result['status']]
     assert len(active_names) == 12, 'requested active names missing'
     result['requested_names'] = active_names
@@ -107,6 +121,18 @@ try:
         after = rcon('status')
         assert all(name in after for name in active_names), 'names changed across round'
         result['round_reset_and_names_preserved'] = True
+        if a.allocation_fixture:
+            assert all(after.lower().count(name.lower()) == 1 for name in names)
+            rcon('loadplugin runtime_test'); time.sleep(.3)
+            rcon('runtime_fixture 0 human')
+            rcon('bot_kick 3'); time.sleep(.3)
+            rcon('bot_add 3'); time.sleep(1)
+            after = rcon('status')
+            assert all(after.lower().count(name.lower()) == 1 for name in names), after
+            status = rcon('bot_status')
+            assert 'humans=1' in status and 'bots=11' in status, status
+            result['duplicate_overflow_human_collision_and_admin'] = True
+            rcon('runtime_fixture 0 bot')
     result['passed'] = True
 finally:
     if proc.poll() is None:

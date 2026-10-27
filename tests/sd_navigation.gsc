@@ -6,7 +6,7 @@ init()
     setdvar("bots_play_fire", 0);
     ticks = 0;
     planted = false;
-    defused = false;
+    level thread record_defused();
     for (;;)
     {
         wait 0.05;
@@ -35,10 +35,13 @@ init()
             planted = true;
             setdvar("sd_navigation_plants", getdvarint("sd_navigation_plants") + 1);
         }
-        if (isdefined(level.bombdefused) && level.bombdefused && !defused)
-        {
-            defused = true;
-            setdvar("sd_navigation_defuses", getdvarint("sd_navigation_defuses") + 1);
-        }
+
     }
+}
+
+record_defused()
+{
+    level endon("game_ended");
+    level waittill("bomb_defused");
+    setdvar("sd_navigation_defuses", getdvarint("sd_navigation_defuses") + 1);
 }

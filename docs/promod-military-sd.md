@@ -44,7 +44,11 @@ Pinned inputs are unchanged: Bot Warfare v2.2.0 at
 `7b52b462e40fa68287b9e54602e52da83b17766c`, Promod LIVE V2.20 EU and all
 eight header hashes in `bots/dependencies.json`. Licensed extracted/generated
 scripts stay private. Source terms and credits: [third-party-bots.md](third-party-bots.md).
-The preserved PoC remains read-only.
+The preserved PoC remains read-only. Final native build 1291 SHA-256:
+`e5278dd552ad3fd486fbc3d295ed680804a272327185f4848ab2915893c20584`.
+Final reviewed preparation manifest SHA-256:
+`bf0ff97b01490d20316f1bc2c563f0bd837fff69b389dbe3b1b5ee3946ca2d63`.
+Its private `inputs.json` binds both S&D overlay identities and pinned assets.
 
 ## Evidence and remaining gates
 
@@ -63,15 +67,43 @@ round reset, pure=1 and all 12 requested names retained across the round. Strike
 (`v4up0t8v`, with the same `/tmp/cod4x-sd-native-` prefix) also passed. It does not prove autonomous navigation or real-client gameplay.
 Rejected runs are retained privately and are not qualification evidence.
 
-The separate `--scenario navigation` fixture observes actual AI navigation/use,
-with combat suppressed solely in the test fixture; no positioning is used.
-Neither synthetic fixture certifies combat decisions, HUD, human bomb priority,
-interruption under fire, every supported map or a full competitive match.
-Admission collisions/overflow, bot administration,
-Promod/Zombies gameplay regressions and the supported-map matrix must be recorded
-before qualification approval. Independent Principal source architecture/security review approved draft review
-on 2026-10-27; gameplay/qualification approval and final CI remain pending. Do not promote this
-candidate based only on connected/active bots or prepared waypoint coverage.
+The final-source no-positioning navigation fixture passed on Crash at
+`/tmp/cod4x-sd-native-8b_azzwk/results.json`: Soap picked up and navigated to a
+site, held use at 0:56, native `P_P` occurred at 1:01; Thompson held use at 1:05,
+native `P_D` at 1:12. Combat fire and enemy perception are suppressed only in
+this disposable fixture. This demonstrates autonomous navigation and native
+objective interactions, not behavior under combat or real-client certification.
+Earlier polling observers missed a real defuse before round end; those runs
+remain rejected, and the runner now observes the native `bomb_defused` event.
+
+Native interaction/lifecycle fixtures passed on all 21 configured S&D maps
+(first site on each, using fixture positioning). The private matrix is
+`/tmp/cod4-final-map-matrix.json`; it contains 16 passes plus an initial Bog
+fixture grounding rejection. Bog's traced grounded placement then passed in
+`/tmp/cod4x-sd-native-4avuq1fj`; Crash/Strike/Winter Crash/Backlot are the four
+separate passes listed above. This is not a 21-map autonomous route/combat test.
+
+`/tmp/cod4x-sd-native-vm05fp72/results.json` passed duplicate/unsafe name-pool
+rejection, exhausted-pool numbered fallback, case-insensitive collision handling,
+round preservation, and a synthetic human retaining Capt. Price while native
+`bot_kick 3`/`bot_add 3` removed/recreated the other bots. Twelve unique names
+remained, with one human and eleven bots. Human priority/Ready Up/authentication
+remain covered by existing regressions; synthetic peers do not replace clients.
+
+Local totals: 83 engine Python tests (one existing optional skip), two catalog
+tests, 52 workspace tests, native population policy/rotation/voting and the
+workspace operations mocks pass. Existing hosted Configuration/Operations and
+engine Linux/Windows CI passed on the initial draft heads; required checks must
+also pass on the final heads. No workflow or protection was changed.
+
+Independent Principal source architecture/security review approved draft review
+on 2026-10-27. Source review is bound to engine `a4e6c5f` and coordinated catalog
+`ca71c9d` / workspace `815cd89`; subsequent changes concern fixture observation
+and evidence documentation. Full qualification approval remains pending.
+Supervised real-client combat, both sites/routes across supported maps, human
+bomb ownership/HUD, full matches, and exact-artifact homologation/rollback must
+be qualified before promotion. Existing Zombies native regression is also run
+with the new binary; see the final PR validation record for its result.
 
 ## Rollback and freeze
 
