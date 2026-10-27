@@ -6,11 +6,12 @@
 #include "qcommon.h"
 #include "qcommon_io.h"
 #include "sv_bot_policy.h"
+#include "sv_bot_names.h"
 #include "g_sv_shared.h"
 #include "filesystem.h"
 
 static cvar_t *bot_enable, *bot_ai_ready, *bot_fill_limit, *bot_skill;
-static cvar_t *btd_allies_enable, *btd_allies_limit;
+static cvar_t *btd_allies_enable, *btd_allies_limit, *bot_use_names;
 static bot_fill_state_t fill_state = BOT_FILL_ACTIVE;
 static int next_fill;
 
@@ -51,10 +52,58 @@ static qboolean BotQueueWaiting(void)
     return qfalse;
 }
 
+/* Names are assigned once, never by renaming an existing player. Include humans
+ * in collision checks without modifying their names. Re-read the small local
+ * pool on admission so editing it affects only newly created Promod bots. */
+static qboolean BotNameUsed(const char *name)
+{
+    int i;
+    for (i = 0; i < sv_maxclients->integer; ++i) {
+        char clean[BOT_NAME_BYTES];
+        client_t *cl = &svs.clients[i];
+        if (cl->state < CS_CONNECTED) continue;
+        ClientCleanName(Info_ValueForKey(cl->userinfo, "name"), clean, sizeof(clean), qfalse);
+        if (!Q_stricmp(clean, name)) return qtrue;
+    }
+    return qfalse;
+}
+
+static qboolean BotPoolName(char name[BOT_NAME_BYTES])
+{
+    fileHandle_t file;
+    char data[BOT_NAMES_BYTES], candidate[BOT_NAME_BYTES];
+    const char *cursor = data;
+    int length = FS_SV_FOpenFileRead("scriptdata/botnames.txt", &file);
+    if (!file) return qfalse;
+    if (length <= 0 || length > sizeof(data)) {
+        FS_FCloseFile(file);
+        return qfalse;
+    }
+    if (FS_Read(data, length, file) != length) {
+        FS_FCloseFile(file);
+        return qfalse;
+    }
+    FS_FCloseFile(file);
+    while (BotName_Next(&cursor, data + length, candidate)) {
+        ClientCleanName(candidate, name, BOT_NAME_BYTES, qfalse);
+        if (!BotNameUsed(name)) return qtrue;
+    }
+    return qfalse;
+}
+
 static qboolean BotAddOne(void)
 {
-    char name[32];
-    Com_sprintf(name, sizeof(name), "[BOT] %s %02d", BotAlliedMode() ? "Ally" : "Promod", BotCount() + 1);
+    char name[BOT_NAME_BYTES];
+    int number;
+    if (BotAlliedMode()) {
+        Com_sprintf(name, sizeof(name), "[BOT] Ally %02d", BotCount() + 1);
+    } else if (!bot_use_names->boolean || !BotPoolName(name)) {
+        /* Pigeonhole bound: with N slots at most N names can be occupied. */
+        for (number = 1; number <= sv_maxclients->integer + 1; ++number) {
+            Com_sprintf(name, sizeof(name), "[BOT] Promod %02d", number);
+            if (!BotNameUsed(name)) break;
+        }
+    }
     return SV_AddBotClient(name) != NULL;
 }
 
@@ -197,6 +246,8 @@ void SV_BotManagerInit(void)
     bot_skill = Cvar_RegisterInt("bot_skill", -1, -1, 7, 0, "Bot skill: -1 original fixed profile, 0 mixed, 1..7 Bot Warfare tiers");
     btd_allies_enable = Cvar_RegisterBool("btd_allies_enable", qtrue, 0, "Enable the isolated BTD allied controller");
     btd_allies_limit = Cvar_RegisterInt("btd_allies_limit", 5, 0, 12, 0, "Maximum allied BTD bots");
+    bot_use_names = Cvar_RegisterBool("bot_use_names", qfalse, 0, "Use Bot Warfare scriptdata/botnames.txt for new Promod bots");
+    Cvar_RegisterBool("bot_sd_objectives", qfalse, 0, "Enable native Promod S&D objective navigation and use input");
     Cvar_RegisterBool("bot_debug", qfalse, 0, "Write bot gameplay evidence to the game log");
     Cmd_AddPCommand("bot_kickall", BotKickAll, 80);
     Cmd_AddPCommand("bot_killall", BotKillAll, 80);

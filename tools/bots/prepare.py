@@ -40,6 +40,79 @@ def difficulty_source(internal, script):
             'reset_profile() {\n' + defaults + '\n}\n')
 
 
+def sd_objective_source(script):
+    """Reuse pinned Bot Warfare S&D only, without stock callback replacement.
+
+    Public site positions and planted-bomb state are shared objectives. Enemy
+    carrier positions and remote planting/defusing activity are not AI inputs.
+    """
+    names = ['BotRandomStance', 'bot_inc_bots', 'bot_escort_obj', 'bot_get_obj', 'bot_go_plant',
+             'bot_go_defuse', 'bot_array_nearest_curorigin',
+             'bot_sd_defenders_loop', 'bot_sd_defenders',
+             'bot_sd_attackers_loop', 'bot_sd_attackers']
+    blocks = {name: source_block(script, '^' + name + r'\([^)]*\)') for name in names}
+    defender = blocks['bot_sd_defenders_loop']
+    start = defender.index('\t\ttimeleft =')
+    stop = defender.index('\t\t// pick a site to protect', start)
+    defender = defender[:start] + defender[stop:]
+    # Never react to enemy use activity without perception. Ordinary perception
+    # remains in the combat core; these branches bypass it in the stock AI.
+    start = defender.index('\t\tif ( site isInUse() )')
+    stop = defender.index('\t\t// else hang around the site', start)
+    blocks['bot_sd_defenders_loop'] = defender[:start] + defender[stop:]
+    attacker = blocks['bot_sd_attackers_loop']
+    start = attacker.index('\t\tif ( site isInUse() )')
+    stop = attacker.index('\t\t// else hang around the site', start)
+    attacker = attacker[:start] + attacker[stop:]
+    # Do not randomly delay a carrier for most of a short competitive round.
+    start = attacker.index('\t// check if to plant')
+    stop = attacker.index('\tif ( !isdefined( level.bombzones )', start)
+    attacker = attacker[:start] + attacker[stop:]
+    attacker = replace_once(attacker,
+        'sites[ sites.size ] = level.bombzones[ i ];',
+        'if (!isdefined(data.failed_site) || data.failed_site != level.bombzones[i])\n'
+        '\t\t\tsites[sites.size] = level.bombzones[i];')
+    attacker = replace_once(attacker, 'if ( !sites.size )\n\t{\n\t\treturn;',
+        'if ( !sites.size )\n\t{\n\t\tdata.failed_site = undefined;\n\t\treturn;')
+    attacker = replace_once(attacker,
+        'event = self waittill_any_return( "goal", "bad_path", "new_goal" );',
+        'event = self waittill_any_return( "goal", "bad_path", "new_goal" );\n'
+        '\tif (event == "bad_path") data.failed_site = plant;')
+    blocks['bot_sd_attackers_loop'] = attacker
+    blocks['bot_escort_obj'] = replace_once(blocks['bot_escort_obj'],
+        'carrier == obj.carrier', 'carrier != obj.carrier')
+    result = '\n\n'.join(blocks.values())
+    # Uses native ownership, which Promod already enforces for human players.
+    result = result.replace('self isBombCarrier()', 'self carries_bomb()')
+    result = re.sub(r'^.*maps\\mp\\gametypes\\_globallogic::gettime(?:remaining|passed)\(\).*\n', '', result, flags=re.M)
+    # Guard helper threads that already have disconnect lifetime handling.
+    # bot_inc_bots cleans up via its original event wait.
+    result = result.replace('self endon( "disconnect" );',
+        'self endon( "disconnect" );\n\tself endon( "promod_ai_reset" );\n\tlevel endon( "game_ended" );')
+    # Uniform bounded goal watcher handles configuration changes and plant-state
+    # changes while waiting, including helpers that upstream left unbounded.
+    result = result.replace('self SetScriptGoal( origin,', 'self objective_goal( origin,')
+    result = result.replace('self SetScriptGoal( self.origin, 64 );',
+                            'self objective_goal( self.origin, 64 );')
+    result = result.replace('self bot_wait_stop_move();', 'self wait_stop_move();')
+    result = result.replace('self thread BotPressUse( waitTime );\n\twait waitTime;',
+                            'self hold_objective_use( waitTime );')
+    return ('// Derived 2026-10-27 from pinned Bot Warfare S&D routines.\n'
+            '// INeedGames/INeedBots, PeZBOT and contributors; see docs/third-party-bots.md.\n'
+            '#include common_scripts\\utility;\n#include maps\\mp\\_utility;\n'
+            '#include maps\\mp\\gametypes\\_hud_util;\n'
+            '#include maps\\mp\\bots\\_bot_utility;\n' + result + '\n' +
+            (ROOT / 'bots/sd_objectives.gsc').read_text())
+
+
+def publish_defuse_object(source):
+    # Only publishes the native objective. The original creation, ownership,
+    # callbacks, native hold durations and round outcome logic stay unchanged.
+    return replace_once(source,
+        'defuseObject.label=label;',
+        'defuseObject.label=label;level.defuseObject=defuseObject;')
+
+
 def digest(path):
     with path.open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
@@ -192,6 +265,8 @@ def main():
     internal = (vendor / 'maps/mp/bots/_bot_internal.gsc').read_text()
     difficulty = difficulty_source(internal, (vendor / 'maps/mp/bots/_bot_script.gsc').read_text())
     (target / 'difficulty.gsc').write_text(difficulty)
+    (target / 'sd_objectives.gsc').write_text(sd_objective_source(
+        (vendor / 'maps/mp/bots/_bot_script.gsc').read_text()))
     internal = internal.replace('maps\\mp\\gametypes\\_missions::getweaponclass', 'maps\\mp\\bots\\_bot_utility::getweaponclass')
     internal = internal.replace('self endon( "disconnect" );',
         'self endon( "disconnect" );\n\tself endon( "promod_ai_reset" );\n\tlevel endon( "game_ended" );')
@@ -230,7 +305,8 @@ def main():
         vote_policy.unlink()
     for name, transform in [('maps/mp/gametypes/_promod', human_class_limits),
                             ('maps/mp/gametypes/_globallogic', match_end_rotation),
-                            ('promod/readyup', bot_readyup)]:
+                            ('promod/readyup', bot_readyup),
+                            ('maps/mp/gametypes/sd', publish_defuse_object)]:
         output = mod / (name + '.gsx')
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text('// Private derived gameplay correction; original rules retained.\n' +
@@ -256,6 +332,9 @@ def main():
                 'human_class_limits_overlay': True,
                 'match_end_rotation_overlay': True,
                 'bot_readyup_overlay': True,
+                'sd_objectives_overlay': True,
+                'sd_objectives_sha256': digest(target / 'sd_objectives.gsc'),
+                'sd_native_overlay_sha256': digest(mod / 'maps/mp/gametypes/sd.gsx'),
                 'ai_source_sha256': digest(ROOT / 'bots/promod_ai.gsc'),
                 'dependency_lock_sha256': digest(ROOT / 'bots/dependencies.json'),
                 'promod': lock['promod']['files'], 'headers': lock['integrity_headers']}

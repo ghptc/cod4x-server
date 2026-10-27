@@ -136,6 +136,13 @@ on_round_end()
 {
     level waittill("game_ended");
     setdvar("bot_ai_ready", 0);
+    players = getentarray("player", "classname");
+    for (i = 0; i < players.size; i++)
+        if (players[i].isbot)
+        {
+            players[i] notify("bot_use");
+            players[i] BotBuiltinBotAction("-activate");
+        }
 }
 
 attach()
@@ -148,6 +155,7 @@ attach()
     self.promod_ai_core_spawned = undefined;
     self maps\mp\bots\_bot_internal::added();
     self thread difficulty_control();
+    self thread objective_spawns();
     self maps\mp\bots\_bot_internal::connected();
     self thread model_ready();
     self thread weapon_selection();
@@ -336,4 +344,18 @@ bot_trace(message)
 {
     if (getdvarint("bot_debug"))
         logprint(message + "\n");
+}
+
+// Start only after the existing combat core announces each native spawn.
+objective_spawns()
+{
+    self endon("disconnect");
+    self endon("promod_ai_reset");
+    level endon("game_ended");
+    for (;;)
+    {
+        self thread maps\mp\bots\sd_objectives::start();
+        self waittill("bot_spawned");
+        wait 0.05;
+    }
 }
