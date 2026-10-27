@@ -102,6 +102,19 @@ All-map voting policy integration: 89/89 checks, evidence
 optional public-client checkout skipped; native vote and rotation tests passed.
 Sandbox execution denies sockets/32-bit syscalls; authorized local reruns passed.
 
+BTD lifecycle with proposed voting policy passed at
+`/tmp/btd-death-regression-uh2phcph`: native death, respawn, zombie spawn/death,
+wave two, two admission handshakes and Strike/Crash map transitions, no script
+errors. These transitions were administrative, not votes during combat.
+Fresh pinned Promod preparation passed 53/53 integration checks at
+`/tmp/cod4x-promod-integration-6yoxi62_`, including ready-up, voting, match/map
+progression and administration. An earlier run against an older prepared runtime
+failed five ready-up assertions (`/tmp/cod4x-promod-integration-072aw2aj`);
+its ready-up overlay hash differs from current preparation. Do not reuse that
+stale-runtime result as current regression evidence. Existing inputs were retained.
+Mandatory Linux and Configuration CI passed on the initial PR revisions;
+check final PR heads before merge.
+
 Full five-ally creation, distribution, human slot reservation under load,
 command lifecycle, human-only ready-up, wave/death safety, restoration and balance
 remain required work. Do not represent this test PR as that implementation.
