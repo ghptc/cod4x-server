@@ -24,7 +24,7 @@ SAFE_DEATH_CONDITION = ('isDefined(eInflictor) && isDefined(eInflictor.targetnam
                         ' && eInflictor.targetname == "zom"')
 
 
-def raw_source(fastfile, name, expected):
+def raw_source(fastfile, name, expected, encoding='utf-8'):
     # This member is plaintext GSC already stored in the verified fastfile.
     # No bytecode decompiler or asset rebuild is involved. Never save the source
     # in the repository; only the operator's private prepared runtime receives it.
@@ -40,7 +40,7 @@ def raw_source(fastfile, name, expected):
     raw = data[start:start + length]
     if hashlib.sha256(raw).hexdigest() != expected:
         raise ValueError('BTD death callback source hash mismatch')
-    return raw.decode('utf-8')
+    return raw.decode(encoding)
 
 
 def death_overlay(fastfile, expected):
@@ -64,6 +64,28 @@ def spawn_overlay(fastfile, expected):
                           ' temp.angles = (0, 0, 0);').encode('utf-8')
 
 
+NAVIGATION_SCRIPT = 'svr/pezbot.gsc'
+NAVIGATION_END_CHECK = '    if(!isDefined(string) || string == "" || string == "end")'
+# The pinned Killhouse table contains 101 valid nodes, then the marker "end ".
+# Keep all node coordinates, connectivity and the other map loaders unchanged.
+KILLHOUSE_TERMINATOR_REPAIR = (
+    '    // Modified 2026-10-27: repair only the pinned Killhouse terminator.\r\n'
+    '    if(getdvar("mapname") == "mp_killhouse" && iLineOffset == 4827 &&\r\n'
+    '       compiledFilename == "waypoints/PeZBOT_WP_4.csv" &&\r\n'
+    '       level.waypointCount == 101 && string == "end ")\r\n'
+    '        string = "end";\r\n\r\n')
+
+
+def navigation_overlay(fastfile, expected):
+    # Latin-1 is a reversible byte mapping: this vendor file has CP1252 comments.
+    # Inserting ASCII must not recode or discard the original source bytes.
+    source = raw_source(fastfile, NAVIGATION_SCRIPT, expected, encoding='latin-1')
+    if source.count(NAVIGATION_END_CHECK) != 1:
+        raise ValueError('Unexpected BTD waypoint termination check')
+    return source.replace(NAVIGATION_END_CHECK,
+                          KILLHOUSE_TERMINATOR_REPAIR + NAVIGATION_END_CHECK).encode('latin-1')
+
+
 def prepare(source, headers, binary, output):
     lock = json.loads((ROOT / 'tools/btd/dependencies.json').read_text())
     header_lock = json.loads((ROOT / 'bots/dependencies.json').read_text())['integrity_headers']
@@ -78,6 +100,8 @@ def prepare(source, headers, binary, output):
                             lock['death_callback_source_sha256'])
     spawn = spawn_overlay((source / 'btd_alpha_001/mod.ff').read_bytes(),
                           lock['spawn_points_source_sha256'])
+    navigation = navigation_overlay((source / 'btd_alpha_001/mod.ff').read_bytes(),
+                                    lock['navigation_source_sha256'])
     binary_hash = digest(binary)
     if output.exists():
         raise ValueError('Output must be a new directory; existing runtimes are never overwritten')
@@ -99,6 +123,9 @@ def prepare(source, headers, binary, output):
     spawn_path = mod / SPAWN_SCRIPT.replace('.gsc', '.gsx')
     spawn_path.parent.mkdir(parents=True, exist_ok=True)
     spawn_path.write_bytes(spawn)
+    navigation_path = mod / NAVIGATION_SCRIPT.replace('.gsc', '.gsx')
+    navigation_path.parent.mkdir(parents=True, exist_ok=True)
+    navigation_path.write_bytes(navigation)
     notices = output / 'licenses'
     notices.mkdir()
     shutil.copy2(source / 'readme.txt', notices / 'Before-the-Dawn-readme.txt')
@@ -116,9 +143,11 @@ def prepare(source, headers, binary, output):
                          if k.startswith('btd_alpha_001/') and Path(k).name != 'server.cfg'},
               'default_cfgs': lock['default_cfgs'],
               'overlays': {str(patched.relative_to(mod)): digest(patched),
-                           str(spawn_path.relative_to(mod)): digest(spawn_path)},
+                           str(spawn_path.relative_to(mod)): digest(spawn_path),
+                           str(navigation_path.relative_to(mod)): digest(navigation_path)},
               'death_callback_source_sha256': lock['death_callback_source_sha256'],
               'spawn_points_source_sha256': lock['spawn_points_source_sha256'],
+              'navigation_source_sha256': lock['navigation_source_sha256'],
               'dependency_lock_sha256': digest(ROOT / 'tools/btd/dependencies.json'),
               'qualification': 'original package map list; gameplay qualification is separate'}
     (output / 'inputs.json').write_text(json.dumps(record, indent=2) + '\n')

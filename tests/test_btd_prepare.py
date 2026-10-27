@@ -32,6 +32,8 @@ class BtdPreparation(unittest.TestCase):
         payload = b'fixture!' + struct.pack('<I', len(self.raw)) + marker + self.raw + b'\0'
         self.spawn_raw = ('init() { ' + btd.SPAWN_ORIGIN + ' }').encode()
         payload += struct.pack('<I', len(self.spawn_raw)) + b'\xff'*4 + btd.SPAWN_SCRIPT.encode() + b'\0' + self.spawn_raw + b'\0'
+        self.navigation_raw = ('loader() {\r\n' + btd.NAVIGATION_END_CHECK + '\r\n return; }').encode()
+        payload += struct.pack('<I', len(self.navigation_raw)) + b'\xff'*4 + btd.NAVIGATION_SCRIPT.encode() + b'\0' + self.navigation_raw + b'\0'
         self.fastfile = b'fixture-head' + zlib.compress(payload)
         (mod / 'mod.ff').write_bytes(self.fastfile)
         (mod / 'server.cfg').write_text('unsafe sample must not be packaged')
@@ -49,7 +51,8 @@ class BtdPreparation(unittest.TestCase):
         (self.root / 'tools/btd/dependencies.json').write_text(json.dumps(
             {'files': hashes, 'default_cfgs': ['btd_settings.cfg'],
              'death_callback_source_sha256': hashlib.sha256(self.raw).hexdigest(),
-             'spawn_points_source_sha256': hashlib.sha256(self.spawn_raw).hexdigest()}))
+             'spawn_points_source_sha256': hashlib.sha256(self.spawn_raw).hexdigest(),
+             'navigation_source_sha256': hashlib.sha256(self.navigation_raw).hexdigest()}))
         (self.root / 'bots/dependencies.json').write_text(json.dumps(
             {'integrity_headers': {p.name: btd.digest(p) for p in self.headers.iterdir()}}))
         self.output = self.root / 'runtime'
@@ -109,3 +112,33 @@ class BtdPreparation(unittest.TestCase):
         overlay = self.output / 'mods/btd_alpha_001' / btd.SPAWN_SCRIPT.replace('.gsc', '.gsx')
         self.assertEqual(overlay.read_bytes(), self.spawn_raw.replace(
             btd.SPAWN_ORIGIN.encode(), (btd.SPAWN_ORIGIN+' temp.angles = (0, 0, 0);').encode()))
+
+
+    def test_only_pinned_killhouse_terminal_check_changes(self):
+        record = self.prepare()
+        path = self.output / 'mods/btd_alpha_001' / btd.NAVIGATION_SCRIPT.replace('.gsc', '.gsx')
+        expected = self.navigation_raw.replace(btd.NAVIGATION_END_CHECK.encode(),
+            (btd.KILLHOUSE_TERMINATOR_REPAIR + btd.NAVIGATION_END_CHECK).encode())
+        self.assertEqual(path.read_bytes(), expected)
+        self.assertEqual(record['overlays'][str(path.relative_to(self.output / 'mods/btd_alpha_001'))],
+                         hashlib.sha256(expected).hexdigest())
+        self.assertEqual(record['navigation_source_sha256'], hashlib.sha256(self.navigation_raw).hexdigest())
+        self.assertEqual(len(record['overlays']), 3)
+
+    def test_unpinned_navigation_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'source hash mismatch'):
+            btd.navigation_overlay(self.fastfile, '0' * 64)
+
+    def test_missing_or_ambiguous_navigation_guard_rejected(self):
+        for raw in [b'loader() {}', self.navigation_raw * 2]:
+            marker = b'\xff'*4 + btd.NAVIGATION_SCRIPT.encode() + b'\0'
+            ff = b'fixture-head' + zlib.compress(b'fixture!' + struct.pack('<I', len(raw)) + marker + raw + b'\0')
+            with self.assertRaisesRegex(ValueError, 'termination check'):
+                btd.navigation_overlay(ff, hashlib.sha256(raw).hexdigest())
+
+    def test_navigation_preserves_non_utf8_comments(self):
+        raw = b'// vendor comment \x93quoted\x94\r\n' + self.navigation_raw
+        marker = b'\xff'*4 + btd.NAVIGATION_SCRIPT.encode() + b'\0'
+        ff = b'fixture-head' + zlib.compress(b'fixture!' + struct.pack('<I', len(raw)) + marker + raw + b'\0')
+        overlay = btd.navigation_overlay(ff, hashlib.sha256(raw).hexdigest())
+        self.assertEqual(overlay.replace(btd.KILLHOUSE_TERMINATOR_REPAIR.encode(), b''), raw)
