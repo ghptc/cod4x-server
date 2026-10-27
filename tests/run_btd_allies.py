@@ -192,6 +192,10 @@ with logpath.open('w') as output:
         checks['killall_observed_deaths'] = killed['alive'] == 0
         time.sleep(15)
         respawn = snapshot('respawn')
+        for attempt in range(8):
+            if not respawn['canjoin'] or respawn['alive'] == respawn['allies']: break
+            time.sleep(1)
+            respawn = snapshot('grace_recovery_' + str(attempt))
         checks['bot_respawn_respects_wave'] = (respawn['alive'] == respawn['allies'] if respawn['canjoin'] else respawn['alive'] == 0)
         checks['kickall_command'] = 'Bots removed' in rcon('bot_kickall')
         time.sleep(4)
@@ -228,14 +232,14 @@ with logpath.open('w') as output:
         admitted = snapshot('reclaimed')
         checks['human_admission_at_capacity'] = admitted['humans'] == 2 and admitted['allies'] == capacity['allies'] - 1
         send('btd_allies_fixture fire ' + str(human))
-        # Only the real next grace permits dead allies to return. Require living
-        # allies before testing elimination; waiting corpses prove nothing.
+        # Require a real active wave with living allies and humans. Killing in
+        # grace races the vendor's legitimate human respawn before its queued end.
         ready = admitted
         for attempt in range(90):
-            if ready['alive'] > 0 and ready['human_alive'] > 0: break
+            if ready['alive'] > 0 and ready['human_alive'] > 0 and not ready['canjoin']: break
             time.sleep(1)
             ready = snapshot('elimination_ready_' + str(attempt))
-        checks['living_allies_before_human_death'] = ready['alive'] > 0
+        checks['living_allies_before_human_death'] = ready['alive'] > 0 and not ready['canjoin']
         boundary = len(console())
         send('set btd_allies_test_request all_humans_die')
         time.sleep(4)

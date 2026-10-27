@@ -148,3 +148,50 @@ A further rejected run, `/tmp/btd-five-allies-kzstcxhj`, exposed missing
 first-use vendor ammo-drop eligibility during native capacity refill; the
 undefined-only pickup initialization above addresses that failure. A subsequent
 removed-player cooldown error required the pinned seventh ammo safety overlay.
+
+
+## Final allied native qualification
+
+**52/52 checks passed** at
+`/tmp/btd-five-allies-1efma7z3/results.json`, with no script errors and both
+process shutdowns returning zero. The source audit at that same directory matches
+all seven production overlays after removing exactly the two documented test-only
+injections, and matches the observer fixture. Its dependency-lock SHA-256 is
+`b145c6dcc94dfe2486fb8c0c9e8e165c387df7b321e10fcfa04540557882bb76`.
+
+- Five default living allies, exactly three easy/two medium; no human/no wave.
+- All five original client slots fired actual rounds at live vendor zombies.
+  Combat snapshot: 13 attributed native allied bullet hits, 140 vendor melee
+  damage events against allies, zero allied kills versus eight synthetic-human
+  kills, and no allied damage to humans. Six positive/blocked shot-guard trials.
+- Five actual administrative deaths and normal grace respawn; live-wave deaths
+  respect the joining window. Kick, kickall pause, explicit re-add, empty killall,
+  invalid counts, authenticated/denied RCON, and human preservation passed.
+- Full capacity: 11 allies plus one actual human; a second human connection
+  reclaimed one slot, leaving ten allies and two humans. Reconnection passed.
+- Active wave three: ten living allies and two living humans before suicide;
+  actual vendor end event had ten living allies and zero living humans.
+- Killhouse→Crash→Killhouse, restart with five living allies, pure mode and eight
+  administrative headers passed. Dynamic mode produced exactly 28 zombies for
+  one human plus five allies, rather than the 58 that six counted players imply.
+- Native horizontal following displacement from grace respawn to autonomous
+  observation: slot zero 369.198 units; slot four 341.192 units. This does not
+  qualify a dedicated allied obstacle/BFS route or all-map allied gameplay.
+
+Runner SHA-256:
+`c90818a77734a420d7130dd89e473e9ddc9cd8ef4e6dea63f86d7e4d865f0e06`;
+observer fixture:
+`0192315dd0eb0fc1ab0ee57413e1b5c6f1e06fd191e5fc58bd6f5a14725f6a34`.
+The earlier seven-overlay run `/tmp/btd-five-allies-km2cjkwf` remains **50/52,
+failed**: its assertions raced legitimate grace spawning and human respawn.
+The accepted runner waits for normal spawn ticks and requires an active wave
+before elimination; no game state or damage was fabricated to satisfy them.
+
+Implementation is [engine PR #25](https://github.com/ghptc/cod4x-server/pull/25);
+packaging is [workspace PR #17](https://github.com/ghptc/ec2-workspace/pull/17),
+head `c118e84984f8a2351c75756fdc6e6a215732a3b2`. Linux and Windows CI passed
+implementation head `58ac058b694ec687d2607b463fbc85a6a974921e`; workspace
+Operations passed its final head. The final evidence/runner commit must retain
+green mandatory Linux CI before owner merge. No merge or deployment is authorized
+by these synthetic results; operator-supervised balance and real-client
+qualification remain outstanding.
