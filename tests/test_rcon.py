@@ -92,6 +92,12 @@ class Rcon(unittest.TestCase):
     def test_mode_request_logs_omit_untrusted_arguments(self):
         self.assertEqual(self.udp(16,command='change_mode promod MODE_SECRET_CANARY'),b'INGRESS_ALLOWED')
 
+    def test_udp_credential_commands_omit_arguments_from_logs(self):
+        for command in ('AdminChangePassword owner MODE_SECRET_CANARY',
+                        'ChangePassword old MODE_SECRET_CANARY',
+                        'set rcon_password MODE_SECRET_CANARY'):
+            self.assertEqual(self.udp(16, command=command), b'EXECUTED:' + command.encode())
+
     def test_source_zero_account_cannot_impersonate_master_console(self):
         rejected=subprocess.run([str(self.binary),'--source-zero','console SyntheticAccountPassword'],
                                 text=True,capture_output=True,check=True)
