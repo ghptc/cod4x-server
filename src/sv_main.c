@@ -1532,7 +1532,7 @@ __optimize3 __regparm2 static void SVC_RemoteCommand( netadr_t *from, msg_t *msg
         cmd_aux++;
 
     Com_Printf (CON_CHANNEL_SERVER,"Rcon from %s: %s\n", NET_AdrToString (from),
-        SV_RconModeCommand(cmd_aux) ? "change_mode request (arguments omitted)" : cmd_aux );
+        SV_RconModeCommand(cmd_aux) ? "change_game request (arguments omitted)" : "remote command (arguments omitted)" );
 
     Com_BeginRedirect (sv_outputbuf, SV_OUTPUTBUF_LENGTH, SV_FlushRedirect);
     if (SV_RconModeIngress(cmd_aux, 100, from,

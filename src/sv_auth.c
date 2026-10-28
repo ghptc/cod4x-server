@@ -415,6 +415,7 @@ void Auth_ChangeAdminPassword( uint64_t steamid, const char* password ){
 
 	Q_strncpyz(user->sha256, sha256, sizeof(user->sha256));
 	Q_strncpyz(user->salt, (char *)salt, sizeof(user->salt));
+	user->sessionid[0] = '\0'; /* Password recovery revokes browser sessions. */
 
 	NV_ProcessEnd();
 
@@ -519,6 +520,7 @@ qboolean Auth_AddAdminToList(const char* username, const char* password, const c
 			{
 				Q_strncpyz(user->sha256, password, sizeof(user->sha256));
 				Q_strncpyz(user->salt, salt, sizeof(user->salt));
+				user->sessionid[0] = '\0';
 			}
 
 			if(power > 0 && power > user->power)

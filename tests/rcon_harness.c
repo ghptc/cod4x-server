@@ -28,8 +28,9 @@ static struct { netadr_t redirectAddress; } svs;
 static struct { int rconBucket; } querylimit;
 static int executed, ban_seconds, source_id;
 qboolean SV_RconModeFraming(const byte *wire, int length);
+qboolean SV_RconModeCommand(const char *raw);
 static qboolean SV_RconModeIngress(const char *raw,int power,const netadr_t *peer,qboolean framing) {
- (void)peer; assert(power==100); if(strncmp(raw,"change_mode",11)) return qfalse;
+ (void)peer; assert(power==100); if(!SV_RconModeCommand(raw)) return qfalse;
  strcpy(response,framing?"INGRESS_ALLOWED":"INGRESS_INVALID"); return qtrue;
 }
 static void Cmd_TokenizeStringInternal(const char *, qboolean, cmdTokenizeParams_t *);
