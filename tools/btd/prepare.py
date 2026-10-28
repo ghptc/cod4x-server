@@ -101,6 +101,16 @@ def replace_exact(source, old, new, count=1):
     return source.replace(old, new)
 
 
+def ammo_overlay(fastfile, expected):
+    """First pickup is eligible; retain existing cooldowns and cancel on disconnect."""
+    ammo = raw_source(fastfile, ALLIED_AMMO_SCRIPT, expected)
+    ammo = replace_exact(ammo, AMMO_PICKUP_GUARD, AMMO_PICKUP_GUARD + AMMO_FIRST_USE)
+    for function in ('ammoingwait', 'hashadammo'):
+        ammo = replace_exact(ammo, function + '()\r\n{',
+                             function + '()\r\n{\r\n self endon("disconnect");')
+    return ammo.encode()
+
+
 def allied_overlays(fastfile, lock):
     """Private vendor derivatives; original source bytes preserved except guarded edits."""
     global_source = death_overlay(fastfile, lock['death_callback_source_sha256']).decode('utf-8')
@@ -134,19 +144,10 @@ def allied_overlays(fastfile, lock):
     block = replace_exact(zombie[begin:end], 'getentarray("player","classname")',
                           'btd_allies::human_players()')
     zombie = zombie[:begin] + block + zombie[end:]
-    ammo = raw_source(fastfile, ALLIED_AMMO_SCRIPT, lock['allied_ammo_source_sha256'])
-    # Missing initial eligibility crashed the first pickup for any survivor.
-    # Preserve a defined false cooldown; only vendor pickup logic grants ammo.
-    ammo = replace_exact(ammo, AMMO_PICKUP_GUARD, AMMO_PICKUP_GUARD + AMMO_FIRST_USE)
-    # The vendor cooldowns resume after a wait and touch the player entity.
-    # Cancel both on disconnect so human reconnect and ally eviction are safe.
-    for function in ('ammoingwait', 'hashadammo'):
-        ammo = replace_exact(ammo, function + '()\r\n{',
-                             function + '()\r\n{\r\n self endon("disconnect");')
     return {SCRIPT.replace('.gsc', '.gsx'): global_source.encode(),
             ALLIED_SURVIVAL_SCRIPT.replace('.gsc', '.gsx'): survival.encode(),
             ALLIED_ZOMBIE_SCRIPT.replace('.gsc', '.gsx'): zombie.encode(),
-            ALLIED_AMMO_SCRIPT.replace('.gsc', '.gsx'): ammo.encode(),
+            ALLIED_AMMO_SCRIPT.replace('.gsc', '.gsx'): ammo_overlay(fastfile, lock['allied_ammo_source_sha256']),
             'btd_allies.gsx': (ROOT / 'bots/btd_allies.gsc').read_bytes()}
 
 
@@ -167,6 +168,8 @@ def prepare(source, headers, binary, output, allies=False):
     navigation = navigation_overlay((source / 'btd_alpha_001/mod.ff').read_bytes(),
                                     lock['navigation_source_sha256'])
     extra_overlays = allied_overlays((source / 'btd_alpha_001/mod.ff').read_bytes(), lock) if allies else {}
+    ammo = ammo_overlay((source / 'btd_alpha_001/mod.ff').read_bytes(),
+                        lock['allied_ammo_source_sha256'])
     binary_hash = digest(binary)
     if output.exists():
         raise ValueError('Output must be a new directory; existing runtimes are never overwritten')
@@ -191,6 +194,9 @@ def prepare(source, headers, binary, output, allies=False):
     navigation_path = mod / NAVIGATION_SCRIPT.replace('.gsc', '.gsx')
     navigation_path.parent.mkdir(parents=True, exist_ok=True)
     navigation_path.write_bytes(navigation)
+    ammo_path = mod / ALLIED_AMMO_SCRIPT.replace('.gsc', '.gsx')
+    ammo_path.parent.mkdir(parents=True, exist_ok=True)
+    ammo_path.write_bytes(ammo)
     for name, data in extra_overlays.items():
         target = mod / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -218,7 +224,9 @@ def prepare(source, headers, binary, output, allies=False):
               'default_cfgs': lock['default_cfgs'],
               'overlays': {str(patched.relative_to(mod)): digest(patched),
                            str(spawn_path.relative_to(mod)): digest(spawn_path),
-                           str(navigation_path.relative_to(mod)): digest(navigation_path)},
+                           str(navigation_path.relative_to(mod)): digest(navigation_path),
+                           str(ammo_path.relative_to(mod)): digest(ammo_path)},
+              'allied_ammo_source_sha256': lock['allied_ammo_source_sha256'],
               'death_callback_source_sha256': lock['death_callback_source_sha256'],
               'spawn_points_source_sha256': lock['spawn_points_source_sha256'],
               'navigation_source_sha256': lock['navigation_source_sha256'],

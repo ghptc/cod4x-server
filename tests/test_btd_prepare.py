@@ -34,6 +34,8 @@ class BtdPreparation(unittest.TestCase):
         payload += struct.pack('<I', len(self.spawn_raw)) + b'\xff'*4 + btd.SPAWN_SCRIPT.encode() + b'\0' + self.spawn_raw + b'\0'
         self.navigation_raw = ('loader() {\r\n' + btd.NAVIGATION_END_CHECK + '\r\n return; }').encode()
         payload += struct.pack('<I', len(self.navigation_raw)) + b'\xff'*4 + btd.NAVIGATION_SCRIPT.encode() + b'\0' + self.navigation_raw + b'\0'
+        self.ammo_raw = (btd.AMMO_PICKUP_GUARD + '\r\nammoingwait()\r\n{}\r\nhashadammo()\r\n{}').encode()
+        payload += struct.pack('<I', len(self.ammo_raw)) + b'\xff'*4 + btd.ALLIED_AMMO_SCRIPT.encode() + b'\0' + self.ammo_raw + b'\0'
         self.fastfile = b'fixture-head' + zlib.compress(payload)
         (mod / 'mod.ff').write_bytes(self.fastfile)
         (mod / 'server.cfg').write_text('unsafe sample must not be packaged')
@@ -52,7 +54,8 @@ class BtdPreparation(unittest.TestCase):
             {'files': hashes, 'default_cfgs': ['btd_settings.cfg'],
              'death_callback_source_sha256': hashlib.sha256(self.raw).hexdigest(),
              'spawn_points_source_sha256': hashlib.sha256(self.spawn_raw).hexdigest(),
-             'navigation_source_sha256': hashlib.sha256(self.navigation_raw).hexdigest()}))
+             'navigation_source_sha256': hashlib.sha256(self.navigation_raw).hexdigest(),
+             'allied_ammo_source_sha256': hashlib.sha256(self.ammo_raw).hexdigest()}))
         (self.root / 'bots/dependencies.json').write_text(json.dumps(
             {'integrity_headers': {p.name: btd.digest(p) for p in self.headers.iterdir()}}))
         self.output = self.root / 'runtime'
@@ -85,6 +88,13 @@ class BtdPreparation(unittest.TestCase):
         lock_path.write_text(json.dumps(lock))
         (self.root / 'bots/btd_allies.gsc').write_text('// synthetic authored adapter')
         record = btd.prepare(self.source, self.headers, self.binary, self.output, allies=True)
+        ammo_name = btd.ALLIED_AMMO_SCRIPT.replace('.gsc', '.gsx')
+        baseline_output = self.root / 'baseline-runtime'
+        baseline = btd.prepare(self.source, self.headers, self.binary, baseline_output)
+        self.assertEqual((self.output / 'mods/btd_alpha_001' / ammo_name).read_bytes(),
+                         (baseline_output / 'mods/btd_alpha_001' / ammo_name).read_bytes())
+        self.assertEqual(record['overlays'][ammo_name], baseline['overlays'][ammo_name])
+        self.assertNotIn('allied_bots', baseline)
         self.assertIs(record['allied_bots'], True)
         self.assertEqual(len(record['overlays']), 7)
         self.assertEqual(record['allied_zombie_source_sha256'], lock['allied_zombie_source_sha256'])
@@ -156,7 +166,7 @@ class BtdPreparation(unittest.TestCase):
         self.assertEqual(record['overlays'][str(path.relative_to(self.output / 'mods/btd_alpha_001'))],
                          hashlib.sha256(expected).hexdigest())
         self.assertEqual(record['navigation_source_sha256'], hashlib.sha256(self.navigation_raw).hexdigest())
-        self.assertEqual(len(record['overlays']), 3)
+        self.assertEqual(len(record['overlays']), 4)
 
     def test_unpinned_navigation_blocks_map_declaration(self):
         lock_path = self.root / 'tools/btd/dependencies.json'
@@ -184,3 +194,21 @@ class BtdPreparation(unittest.TestCase):
         ff = b'fixture-head' + zlib.compress(b'fixture!' + struct.pack('<I', len(raw)) + marker + raw + b'\0')
         overlay = btd.navigation_overlay(ff, hashlib.sha256(raw).hexdigest())
         self.assertEqual(overlay.replace(btd.KILLHOUSE_TERMINATOR_REPAIR.encode(), b''), raw)
+
+    def test_baseline_includes_first_pickup_and_disconnect_safety(self):
+        record = self.prepare()
+        name = btd.ALLIED_AMMO_SCRIPT.replace('.gsc', '.gsx')
+        data = (self.output / 'mods/btd_alpha_001' / name).read_bytes()
+        self.assertIn(btd.AMMO_FIRST_USE.encode(), data)
+        self.assertEqual(data.count(b'self endon("disconnect");'), 2)
+        self.assertEqual(record['overlays'][name], hashlib.sha256(data).hexdigest())
+        self.assertNotIn('allied_bots', record)
+
+    def test_unpinned_baseline_ammo_rejected_before_output(self):
+        path = self.root / 'tools/btd/dependencies.json'
+        lock = json.loads(path.read_text())
+        lock['allied_ammo_source_sha256'] = '0' * 64
+        path.write_text(json.dumps(lock))
+        with self.assertRaisesRegex(ValueError, 'source hash mismatch'):
+            self.prepare()
+        self.assertFalse(self.output.exists())

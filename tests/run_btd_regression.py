@@ -19,8 +19,9 @@ p = argparse.ArgumentParser(description=__doc__)
 for name in ('runtime', 'game', 'binary'):
     p.add_argument('--' + name, required=True, type=Path)
 p.add_argument('--fixed', action='store_true')
+p.add_argument('--artifact-ammo', action='store_true', help='Use packaged ammo bytes unchanged; never synthesize the correction')
 p.add_argument('--reproduce-spawn-defect', action='store_true', help='Apply death guard only, expect the native missing-angle failure')
-p.add_argument('--scenario', choices=('expression', 'death', 'lifecycle', 'classic'), required=True)
+p.add_argument('--scenario', choices=('expression', 'death', 'lifecycle', 'classic', 'ammo'), required=True)
 p.add_argument('--classic-control', choices=('timer', 'teleport'),
                help='Negative control: restore one original anti-camping mechanism')
 a = p.parse_args()
@@ -50,7 +51,18 @@ if a.fixed and not a.reproduce_spawn_defect:
     spawn = mod / btd.SPAWN_SCRIPT.replace('.gsc', '.gsx')
     spawn.parent.mkdir(parents=True, exist_ok=True)
     spawn.write_bytes(btd.spawn_overlay(ff.read_bytes(), lock['spawn_points_source_sha256']))
+if a.scenario == 'ammo' and not a.artifact_ammo:
+    ammo = (btd.ammo_overlay(ff.read_bytes(), lock['allied_ammo_source_sha256']) if a.fixed else
+            btd.raw_source(ff.read_bytes(), btd.ALLIED_AMMO_SCRIPT, lock['allied_ammo_source_sha256']).encode())
+    target = mod / btd.ALLIED_AMMO_SCRIPT.replace('.gsc', '.gsx')
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(ammo)
+    shutil.copy2(ROOT / 'tests/btd_ammo.gsc', mod / 'btd_ammo.gsc')
+if a.scenario == 'ammo' and a.artifact_ammo:
+    shutil.copy2(ROOT / 'tests/btd_ammo.gsc', mod / 'btd_ammo.gsc')
 fixture = (ROOT / 'tests/btd_regression.gsc').read_text()
+if a.scenario == 'ammo':
+    fixture = 'main() { btd_ammo::main(); }\n'
 condition = btd.SAFE_DEATH_CONDITION if a.fixed else btd.DEATH_CONDITION
 fixture = fixture.replace('BTD_TEST_CONDITION', condition.replace('eInflictor', 'fixture'))
 (mod / 'btd_regression.gsc').write_text(fixture)
@@ -97,13 +109,13 @@ def admit(attempt):
 with logpath.open('w') as log:
     proc = subprocess.Popen(cmd, cwd=home, stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT)
     try:
-        until = time.monotonic() + (130 if a.scenario == 'lifecycle' else 35)
+        until = time.monotonic() + (130 if a.scenario == 'lifecycle' else 65 if a.scenario == 'ammo' else 35)
         while time.monotonic() < until and proc.poll() is None:
             time.sleep(.25)
             text = re.sub(r'\^[0-9]', '', logpath.read_text(errors='replace'))
             if 'script runtime error' in text or 'script compile error' in text: break
             proc.stdin.write(b'btd_test_result\nbtd_test_respawn\nbtd_test_zombie_spawn\nbtd_test_wave\n'); proc.stdin.flush()
-            success = {'expression': 'expression_pass', 'death': 'death_callback_survived', 'lifecycle': 'lifecycle_pass', 'classic': 'classic_pass'}[a.scenario]
+            success = {'expression': 'expression_pass', 'death': 'death_callback_survived', 'lifecycle': 'lifecycle_pass', 'classic': 'classic_pass', 'ammo': 'ammo_pass'}[a.scenario]
             if '"'+success+'"' in text or re.search(r'"(?:spawn|respawn|zombie_spawn|wave)_failed"|"classic_[a-z_]+(?:failed|enabled)"', text): break
         if a.scenario == 'lifecycle' and '"lifecycle_pass"' in text and not a.reproduce_spawn_defect:
             time.sleep(2)
@@ -116,6 +128,13 @@ with logpath.open('w') as log:
                 values=status()
                 assert values[b'mapname']==mapname.encode() and values[b'fs_game']==b'mods/btd_alpha_001' and values[b'g_gametype']==b'war' and values[b'sv_pure']==b'1'
                 network_checks['map_'+mapname]=True
+        if a.scenario == 'ammo':
+            network_checks['process_alive_after_scenario'] = proc.poll() is None
+            try:
+                values = status()
+                network_checks['udp_available_after_scenario'] = values.get(b'sv_pure') == b'1'
+            except socket.timeout:
+                network_checks['udp_available_after_scenario'] = False
     finally:
         if proc.poll() is None:
             proc.stdin.write(b'quit\n'); proc.stdin.flush()
@@ -123,7 +142,7 @@ with logpath.open('w') as log:
         except subprocess.TimeoutExpired: proc.kill(); proc.wait()
 text = re.sub(r'\^[0-9]', '', logpath.read_text(errors='replace'))
 error = bool(re.search(r'script (?:runtime|compile) error', text))
-result = {'evidence': str(home), 'scenario': a.scenario, 'fixed': a.fixed,
+result = {'evidence': str(home), 'scenario': a.scenario, 'fixed': a.fixed, 'artifact_ammo': a.artifact_ammo, 'input_binary_sha256': hashlib.sha256(a.binary.read_bytes()).hexdigest(), 'input_fastfile_sha256': hashlib.sha256(ff.read_bytes()).hexdigest(),
           'runtime_error': error, 'gameplay_qualified': False, 'network_checks': network_checks,
           'expression_pass': '"expression_pass"' in text,
           'death_callback_survived': '"death_callback_survived"' in text,
@@ -134,13 +153,19 @@ result = {'evidence': str(home), 'scenario': a.scenario, 'fixed': a.fixed,
           'classic_pass': '"classic_pass"' in text,
           'classic_control': a.classic_control,
           'classic_control_detected': bool(a.classic_control and '"classic_'+a.classic_control+'_enabled"' in text),
-          'lifecycle_pass': '"lifecycle_pass"' in text}
+          'lifecycle_pass': '"lifecycle_pass"' in text, 'ammo_pass': '"ammo_pass"' in text}
 (home/'results.json').write_text(json.dumps(result, indent=2)+'\n')
 print(json.dumps(result, indent=2))
-expected = result[{'expression':'expression_pass','death':'death_callback_survived','lifecycle':'lifecycle_pass','classic':'classic_pass'}[a.scenario]]
+expected = result[{'expression':'expression_pass','death':'death_callback_survived','lifecycle':'lifecycle_pass','classic':'classic_pass','ammo':'ammo_pass'}[a.scenario]]
 if a.classic_control:
     assert not error and result['classic_control_detected'], 'Negative control not detected: '+str(home)
 elif a.reproduce_spawn_defect:
     assert error and 'type undefined is not a vector' in text, 'Spawn defect not reproduced: '+str(home)
-elif a.fixed: assert not error and expected, 'Fixed regression failed: '+str(home)
+elif a.scenario == 'ammo' and not a.fixed:
+    assert error and 'cannot cast undefined to bool' in text and 'player.hasntfullammo' in text, 'Ammo failure not reproduced: '+str(home)
+    assert network_checks['process_alive_after_scenario'] and not network_checks['udp_available_after_scenario'], 'Shutdown symptom not reproduced'
+elif a.fixed:
+    assert not error and expected, 'Fixed regression failed: '+str(home)
+    if a.scenario == 'ammo':
+        assert all(network_checks.values()), 'Fixed ammo service unavailable: '+str(home)
 else: assert error and "has unmatching types 'undefined' and 'string'" in text, 'Expected failure not reproduced: '+str(home)
