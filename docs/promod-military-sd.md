@@ -117,7 +117,17 @@ lifecycle, human priority, administration and script-error checks passed in the
 51/52 runs. A prior wrong-baseline run without the existing Killhouse repair was
 rejected separately. Thresholds and Zombies source are unchanged; preserve all
 candidate/control evidence and keep the gameplay gate open. The final build-1293
-run is recorded in the final PR validation update.
+run passed all 52 checks at `/tmp/btd-five-allies-e8pcoy76/results.json`.
+The independent Principal reviewer accepted that local regression pass while
+retaining the earlier engagement failures as a supervised-gameplay concern.
+Operator gameplay and balance flags remain false.
+
+Build 1293 was compiled with the reviewed naming-cursor working-tree delta before
+its `2cfc558` commit. Its embedded/base evidence revision is `8c6084f`; it must
+not be described as a clean build of that revision. The exact binary SHA above,
+reviewed cursor delta and preserved fixture outputs bind this precommit local
+run. A fresh exact-revision artifact and supervised qualification are required
+after approved merges.
 
 ## Rollback and freeze
 
